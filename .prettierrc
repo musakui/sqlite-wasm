@@ -1,20 +1,7 @@
 {
-  "arrowParens": "always",
-  "bracketSpacing": true,
-  "embeddedLanguageFormatting": "auto",
-  "htmlWhitespaceSensitivity": "css",
-  "insertPragma": false,
-  "bracketSameLine": false,
-  "jsxSingleQuote": false,
-  "printWidth": 80,
-  "proseWrap": "always",
-  "quoteProps": "as-needed",
-  "requirePragma": false,
-  "semi": true,
+  "useTabs": true,
+  "printWidth": 150,
   "singleQuote": true,
-  "tabWidth": 2,
-  "trailingComma": "all",
-  "useTabs": false,
-  "vueIndentScriptAndStyle": false,
-  "plugins": ["prettier-plugin-jsdoc"]
+  "trailingComma": "es5",
+  "semi": false
 }
