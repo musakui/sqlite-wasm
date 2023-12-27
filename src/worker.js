@@ -1,13 +1,12 @@
 import { init } from '../lib/index.js'
 
+const wasmSrc = new URL('../sqlite-wasm/jswasm/sqlite3.wasm', import.meta.url)
+
 const DB_FILE = '/db.sqlite3'
 
 const post = (d) => self.postMessage(d)
 
-const sqlite = await init({
-	print: (...m) => post({ type: 'log', message: m }),
-	printErr: (...m) => post({ type: 'err', message: m }),
-})
+const sqlite = await init(fetch(wasmSrc))
 
 const db = new sqlite.oo1.OpfsDb(DB_FILE)
 
