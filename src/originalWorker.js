@@ -18,7 +18,7 @@ const bundle = {
 }
 
 try {
-	await runDemo(bundle, (m) => self.postMessage({ message: m }))
+	runDemo(bundle, (m) => self.postMessage({ message: m }))
 } catch (error) {
 	self.postMessage({ error })
 }
