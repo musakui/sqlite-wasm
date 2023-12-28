@@ -1,12 +1,10 @@
-import { init } from '../lib/index.js'
+import init from '../sqlite-wasm/jswasm/sqlite3-bundler-friendly.mjs'
 import { runDemo } from './demo.js'
 
-const wasmSrc = new URL('../sqlite-wasm/jswasm/sqlite3.wasm', import.meta.url)
+const DB_FILE = '/db-ori'
 
-const DB_FILE = '/db.sqlite3'
-
-const sqlite = await init(fetch(wasmSrc))
-const PoolUtil = await sqlite.installOpfsSAHPoolVfs()
+const sqlite = await init()
+const PoolUtil = await sqlite.installOpfsSAHPoolVfs({ name: 'ori', directory: '.ori' })
 const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
 
 const bundle = {
