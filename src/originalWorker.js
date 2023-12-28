@@ -7,8 +7,8 @@ const sqlite = await init()
 const PoolUtil = await sqlite.installOpfsSAHPoolVfs({ name: 'ori', directory: '.ori' })
 const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
 
-const bundle = {
-	exec: (...a) => db.exec(...a),
+const utils = {
+	log: (m, b) => self.postMessage({ message: m, body: b }),
 	exportDb: () => sqlite.capi.sqlite3_js_db_export(db).buffer,
 	importDb: (p) => {
 		if (!(p instanceof ArrayBuffer)) return 0
@@ -18,7 +18,7 @@ const bundle = {
 }
 
 try {
-	runDemo(bundle, (m) => self.postMessage({ message: m }))
+	runDemo(db, utils)
 } catch (error) {
 	self.postMessage({ error })
 }

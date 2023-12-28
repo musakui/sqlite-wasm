@@ -1,11 +1,15 @@
 const runWorker = (url) => {
 	const worker = new Worker(url, { type: 'module' })
+	const started = Date.now()
 	worker.addEventListener('message', (evt) => {
-		const { error, message } = evt.data
+		const { error, message, body } = evt.data
 		if (error) {
 			app.innerHTML += `\n\nERROR: ${error}`
-		} else if (message) {
-			app.innerHTML += message
+		}
+		if (!message) return
+		app.innerHTML += `[${Date.now() - started}] ${message}\n`
+		if (body) {
+			app.innerHTML += `\n${body}\n\n`
 		}
 	})
 }
