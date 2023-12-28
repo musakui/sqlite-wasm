@@ -1,3 +1,4 @@
+//import init from '../sqlite-wasm/jswasm/sqlite3-bundler-friendly.mjs'
 import { init } from '../lib/index.js'
 
 const wasmSrc = new URL('../sqlite-wasm/jswasm/sqlite3.wasm', import.meta.url)
@@ -6,9 +7,12 @@ const DB_FILE = '/db.sqlite3'
 
 const post = (d) => self.postMessage(d)
 
+//const sqlite = await init()
 const sqlite = await init(fetch(wasmSrc))
 
-const db = new sqlite.oo1.OpfsDb(DB_FILE)
+const PoolUtil = await sqlite.installOpfsSAHPoolVfs({});
+const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
+//const db = new sqlite.oo1.OpfsDb(DB_FILE)
 
 const run = (act, p) => {
 	switch (act) {

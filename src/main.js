@@ -24,6 +24,11 @@ await db.exec(`COMMIT`)
 
 app.innerHTML += ' ok\n\n'
 
+const result = await db.exec(`SELECT * FROM test_table ORDER BY val LIMIT 3`)
+
+app.innerHTML += JSON.stringify(result, null, 2)
+app.innerHTML += '\n\n'
+
 await db.exec(`UPDATE test_table SET name = 'a name' WHERE id = 'id2'`)
 
 app.innerHTML += 'updated\n\n'
@@ -31,7 +36,9 @@ app.innerHTML += 'updated\n\n'
 const buf = await db.export()
 app.innerHTML += `exported ${buf.byteLength}\n\n`
 
+/*
 const imp = await db.init(buf)
 app.innerHTML += `imported ${imp}\n\n`
 
-app.innerHTML += JSON.stringify(await db.exec(`SELECT * from test_table WHERE id = 'id2'`), null, 2)
+app.innerHTML += JSON.stringify(await db.exec(`SELECT * FROM test_table WHERE id = 'id2'`), null, 2)
+*/
