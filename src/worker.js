@@ -1,5 +1,5 @@
 import { init } from '../lib/index.js'
-import { sqlite3_js_db_export } from '../lib/capi_with_export.js'
+import { sqlite3_js_db_export } from '../lib/capi_extras.js'
 import { runDemo } from './demo.js'
 
 const DB_FILE = '/db.sqlite3'
