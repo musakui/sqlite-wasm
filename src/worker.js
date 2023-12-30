@@ -1,5 +1,5 @@
 import { init } from '../lib/index.js'
-import { sqlite3_js_db_export } from '../lib/capi_extras.js'
+import * as capi from '../lib/capi.js'
 import { runDemo } from './demo.js'
 
 const DB_FILE = '/db.sqlite3'
@@ -10,7 +10,7 @@ const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
 
 const utils = {
 	log: (m, b) => self.postMessage({ message: m, body: b }),
-	exportDb: () => sqlite3_js_db_export(db).buffer,
+	exportDb: () => capi.sqlite3_js_db_export(db).buffer,
 	importDb: (p) => {
 		if (!(p instanceof ArrayBuffer)) return 0
 		PoolUtil.importDb(DB_FILE, p)
