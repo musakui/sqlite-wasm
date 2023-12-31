@@ -51,8 +51,11 @@ export const runDemo = (db, utils) => {
 	db.exec(`COMMIT`)
 	log('OK')
 
-	const [count] = db.exec({ sql: `SELECT COUNT(id) FROM smol`, rowMode: 'array' })
-	log(`row count: ${count}`)
+	const [vals] = db.exec({
+		sql: `SELECT COUNT(id), MAX(rand), MIN(rand), AVG(rand) FROM smol`,
+		rowMode: 'object',
+	})
+	log(`aggregates`, JSON.stringify(vals, null, 2))
 
 	db.exec(`UPDATE smol SET name = 'smol', rand = 0 WHERE id = 'id0'`)
 	log('updated row')
