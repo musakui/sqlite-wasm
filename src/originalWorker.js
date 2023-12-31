@@ -4,6 +4,7 @@ import { runDemo } from './demo.js'
 const DB_FILE = '/db-ori'
 
 const sqlite = await init()
+console.log(sqlite)
 const PoolUtil = await sqlite.installOpfsSAHPoolVfs({ name: 'ori', directory: '.ori' })
 const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
 

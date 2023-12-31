@@ -1,5 +1,5 @@
 import { init } from '../lib/index.js'
-import * as capi from '../lib/capi.js'
+import * as wasm from '../lib/wasm.js'
 import { runDemo } from './demo.js'
 
 const DB_FILE = '/db.sqlite3'
@@ -10,7 +10,7 @@ const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
 
 const utils = {
 	log: (m, b) => self.postMessage({ message: m, body: b }),
-	exportDb: () => capi.sqlite3_js_db_export(db).buffer,
+	exportDb: () => wasm.sqlite3_js_db_export(db).buffer,
 	importDb: (p) => {
 		if (!(p instanceof ArrayBuffer)) return 0
 		PoolUtil.importDb(DB_FILE, p)
