@@ -1,6 +1,6 @@
 import { abort } from './util.js'
 
-const DEFAULT_WASM_SRC = '../sqlite-wasm/jswasm/sqlite3.wasm'
+const DEFAULT_WASM_SRC = '../jswasm/sqlite3.wasm'
 
 const NOT_INITIALIZED = 'not initialized'
 

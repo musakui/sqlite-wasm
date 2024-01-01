@@ -1,5 +1,5 @@
-import { init } from '../lib/index.js'
-import * as wasm from '../lib/wasm.js'
+import { init } from '../sqlite-wasm/lib/index.js'
+import * as wasm from '../sqlite-wasm/lib/wasm.js'
 import { runDemo } from './demo.js'
 
 const DB_FILE = '/db.sqlite3'
