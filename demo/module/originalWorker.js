@@ -1,16 +1,16 @@
-import { init } from '../sqlite-wasm/lib/index.js'
-import * as wasm from '../sqlite-wasm/lib/wasm.js'
+import init from '../../index.mjs'
 import { runDemo } from './demo.js'
 
-const DB_FILE = '/db.sqlite3'
+const DB_FILE = '/db-ori'
 
 const sqlite = await init()
-const PoolUtil = await sqlite.installOpfsSAHPoolVfs()
+console.log(sqlite)
+const PoolUtil = await sqlite.installOpfsSAHPoolVfs({ name: 'ori', directory: '.ori' })
 const db = new PoolUtil.OpfsSAHPoolDb(DB_FILE)
 
 const utils = {
 	log: (m, b) => self.postMessage({ message: m, body: b }),
-	exportDb: () => wasm.sqlite3_js_db_export(db).buffer,
+	exportDb: () => sqlite.capi.sqlite3_js_db_export(db).buffer,
 	importDb: (p) => {
 		if (!(p instanceof ArrayBuffer)) return 0
 		PoolUtil.importDb(DB_FILE, p)
