@@ -12,17 +12,15 @@ const BINDSCOPE_TRANSIENT = 'transient'
 const bindScopes = [BINDSCOPE_CONTEXT, BINDSCOPE_PERMANENT, BINDSCOPE_SINGLETON, BINDSCOPE_TRANSIENT]
 
 const __xIdent = (v) => v
-const __xArgInt = (v) => v | 0
-const __xArgFloat = (v) => parseFloat(v)
-const __xArgStr = (v) => heap.cstrToJs(v)
-const __xArgJSON = (v) => JSON.parse(heap.cstrToJs(v))
+const __xInt = (v) => v | 0
+const __xFloat = (v) => parseFloat(v)
 
-const __xArgString = (v) => {
+const __xArgStr = (v) => {
 	if (typeof v === 'string') return heap.scopedAllocCString(v)
-	return v ? __xArgInt(v) : null
+	return v ? __xInt(v) : null
 }
 
-const __xArgWithFree = (fn) => (v) => {
+const __xWithFree = (fn) => (v) => {
 	try {
 		return v ? fn(v) : null
 	} finally {
@@ -30,26 +28,28 @@ const __xArgWithFree = (fn) => (v) => {
 	}
 }
 
-const __xArgStrFree = __xArgWithFree(__xArgStr)
+const __xResultStr = (v) => heap.cstrToJs(v)
+const __xResultStrFree = __xWithFree(__xResultStr)
+const __xJSON = (v) => JSON.parse(heap.cstrToJs(v))
 
 const shared = {
 	i8: (i) => (i | 0) & 0xff,
 	i16: (i) => (i | 0) & 0xffff,
-	i32: __xArgInt,
 	i64: BigInt,
-	int: __xArgInt,
-	f32: __xArgFloat,
-	f64: __xArgFloat,
-	float: __xArgFloat,
-	double: __xArgFloat,
+	i32: __xInt,
+	int: __xInt,
+	f32: __xFloat,
+	f64: __xFloat,
+	float: __xFloat,
+	double: __xFloat,
 }
 
 const special = [
-	['*', __xArgInt],
+	['*', __xInt],
 	[null, __xIdent],
 	['null', __xIdent],
-	['void*', __xArgInt],
-	['sqlite3_value*', __xArgInt],
+	['void*', __xInt],
+	['sqlite3_value*', __xInt],
 ]
 
 const static_string_cache = Object.create(null)
@@ -76,36 +76,36 @@ export const xGet = (name) => getASM()[name] ?? abort(`no such symbol ${name}`)
 
 export const xArg = new Map([
 	...special,
-	['**', __xArgInt],
-	['utf8', __xArgString],
-	['string', __xArgString],
-	['pointer', __xArgString],
-	['sqlite3_filename', __xArgInt],
-	['sqlite3_session*', __xArgInt],
-	['sqlite3_context*', __xArgInt],
-	['sqlite3_changegroup*', __xArgInt],
-	['sqlite3_changeset_iter*', __xArgInt],
+	['**', __xInt],
+	['utf8', __xArgStr],
+	['string', __xArgStr],
+	['pointer', __xArgStr],
+	['sqlite3_filename', __xInt],
+	['sqlite3_session*', __xInt],
+	['sqlite3_context*', __xInt],
+	['sqlite3_changegroup*', __xInt],
+	['sqlite3_changeset_iter*', __xInt],
 	['string:static', __xArgStaticString],
-	['string:flexible', (v) => __xArgString(flexibleString(v))],
-	['sqlite3_module*', (v) => __xArgInt(v instanceof structs.sqlite3_module ? v.pointer : v)],
-	['sqlite3_index_info*', (v) => __xArgInt(v instanceof structs.sqlite3_index_info ? v.pointer : v)],
+	['string:flexible', (v) => __xArgStr(flexibleString(v))],
+	['sqlite3_module*', (v) => __xInt(v instanceof structs.sqlite3_module ? v.pointer : v)],
+	['sqlite3_index_info*', (v) => __xInt(v instanceof structs.sqlite3_index_info ? v.pointer : v)],
 	...Object.entries(shared),
 ])
 
 export const xResult = new Map([
 	...special,
 	['number', Number],
-	['utf8', __xArgStr],
-	['json', __xArgJSON],
-	['string', __xArgStr],
-	['utf8:dealloc', __xArgStrFree],
-	['string:dealloc', __xArgStrFree],
-	['json:dealloc', __xArgWithFree(__xArgJSON)],
-	['pointer', __xArgInt],
-	['sqlite3*', __xArgInt],
-	['sqlite3_vfs*', __xArgInt],
-	['sqlite3_stmt*', __xArgInt],
-	['sqlite3_context*', __xArgInt],
+	['json', __xJSON],
+	['utf8', __xResultStr],
+	['string', __xResultStr],
+	['utf8:dealloc', __xResultStrFree],
+	['string:dealloc', __xResultStrFree],
+	['json:dealloc', __xWithFree(__xJSON)],
+	['pointer', __xInt],
+	['sqlite3*', __xInt],
+	['sqlite3_vfs*', __xInt],
+	['sqlite3_stmt*', __xInt],
+	['sqlite3_context*', __xInt],
 	['void', () => undefined],
 	...Object.entries(shared),
 ])
@@ -179,13 +179,13 @@ const __wrapFunction = (func, resultType, argTypes) => {
  * @template {ArgTypeName[]} P
  * @template {keyof ResultTypeMap | null | undefined} R
  * @param {string} name name of exported function
- * @param {R | undefined} resultType return type
+ * @param {R} resultType return type
  * @param {P} argTypes parameter types
  */
 export const xWrapASM = (name, resultType, ...argTypes) => {
-	let fn
-
 	checkArgs(resultType, argTypes)
+
+	let fn
 
 	const wrapped = (...args) => {
 		if (!fn) {
@@ -219,10 +219,15 @@ for (const t of Object.keys(shared)) {
 
 export class AbstractArgAdapter {
 	constructor(opt) {
-		this.name = opt.name ?? 'unnamed adapter'
+		this.name = opt?.name ?? 'unnamed adapter'
 	}
 
-	convertArg(_v, _argv, _idx) {
+	/**
+	 * @param {unknown} v
+	 * @param {unknown[]} argv
+	 * @param {number} idx
+	 */
+	convertArg(v, argv, idx) {
 		abort('should be subclassed')
 	}
 }
@@ -266,6 +271,8 @@ export class FuncPtrAdapter extends AbstractArgAdapter {
 
 	/**
 	 * @param {Function | number | null | undefined} v
+	 * @param {unknown[]} argv
+	 * @param {number} argIndex
 	 */
 	convertArg(v, argv, argIndex) {
 		let pair = this.singleton

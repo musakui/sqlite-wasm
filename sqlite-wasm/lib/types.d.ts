@@ -1,4 +1,6 @@
-export type WasmPointer = number
+declare const pointerTag: unique symbol
+
+export type WasmPointer<T = unknown> = number & { readonly [pointerTag]: T }
 
 export type VersionInfo = {
 	SQLITE_VERSION: string
@@ -18,9 +20,8 @@ interface SharedTypeMap {
 	double: number
 	null: null
 	'*': WasmPointer
-	'void*': WasmPointer
-	'sqlite3*': WasmPointer
-	'sqlite3_value*': WasmPointer
+	'void*': WasmPointer<'void'>
+	'sqlite3_value*': WasmPointer<'value'>
 }
 
 export interface ResultTypeMap extends SharedTypeMap {
@@ -29,19 +30,26 @@ export interface ResultTypeMap extends SharedTypeMap {
 	string: string
 	number: number
 	pointer: WasmPointer
+	'sqlite3*': WasmPointer<'db'>
 }
 
 export interface ArgTypeMap extends SharedTypeMap {
-	'**': WasmPointer
+	'**': WasmPointer<'*'>
 	utf8: number
 	string: number
 	pointer: number
 	sqlite3_filename: number
-	'sqlite3_context*': WasmPointer
-	'sqlite3_stmt*': WasmPointer
-	'sqlite3_vfs*': WasmPointer
 	'string:static': string
 	'string:flexible': number
+	'sqlite3*': WasmPointer<'db'>
+	'sqlite3_vfs*': WasmPointer<'vfs'>
+	'sqlite3_stmt*': WasmPointer<'stmt'>
+	'sqlite3_module*': WasmPointer<'module'>
+	'sqlite3_session*': WasmPointer<'session'>
+	'sqlite3_context*': WasmPointer<'context'>
+	'sqlite3_index_info*': WasmPointer<'index_info'>
+	'sqlite3_changegroup*': WasmPointer<'changegroup'>
+	'sqlite3_changeset_iter*': WasmPointer<'changeset_iter'>
 }
 
 export type ArgTypeName = keyof ArgTypeMap

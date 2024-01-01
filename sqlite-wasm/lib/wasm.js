@@ -1,10 +1,10 @@
 import { ptrSizeof } from './constants.js'
-import { getASM, wasm as wasm_ori, C_API, AllocError, allocError, sqliteError, sqlite3_js_rc_str, structs } from './base.js'
-import * as capi from './capi.js'
+import { getASM, C_API, AllocError, allocError, sqliteError, sqlite3_js_rc_str, structs } from './base.js'
+import * as capi from './capi_base.js'
 import * as heap from './heap.js'
 import * as util from './util.js'
 import * as pstack_m from './pstack.js'
-import { xWrapASM } from './binding.js'
+import { xArg, xWrapASM } from './binding.js'
 
 export const sqlite3_wasm_db_reset = xWrapASM('sqlite3_wasm_db_reset', 'int', 'sqlite3*')
 export const sqlite3_wasm_db_vfs = xWrapASM('sqlite3_wasm_db_vfs', 'sqlite3_vfs*', 'sqlite3*', 'string')
@@ -17,7 +17,7 @@ export const sqlite3_js_aggregate_context = (pCtx, n) => {
 }
 
 export const sqlite3_js_db_export = (pDb, schema = 0) => {
-	pDb = wasm_ori.xWrap.testConvertArg('sqlite3*', pDb)
+	pDb = xArg.get('sqlite3*')(pDb)
 	if (!pDb) return sqliteError('Invalid db')
 	const asm = getASM()
 	const scope = heap.scopedAllocPush()
