@@ -1,4 +1,6 @@
-import { xWrapASM } from './binding.js'
+import { C_API } from './base.js'
+import * as heap from './heap.js'
+import { FuncPtrAdapter, xWrapASM } from './binding.js'
 
 const UDF = undefined
 
@@ -29,6 +31,9 @@ export const sqlite3_bind_null = xWrapASM('sqlite3_bind_null', UDF, STMT, INT)
 export const sqlite3_bind_parameter_count = xWrapASM('sqlite3_bind_parameter_count', INT, STMT)
 export const sqlite3_bind_parameter_index = xWrapASM('sqlite3_bind_parameter_index', INT, STMT, STRING)
 export const sqlite3_bind_pointer = xWrapASM('sqlite3_bind_pointer', INT, STMT, INT, PTR, STATIC, PTR)
+
+export const sqlite3_bind_blob_raw = xWrapASM('sqlite3_bind_blob', INT, STMT, INT, PTR, INT, PTR)
+export const sqlite3_bind_text_raw = xWrapASM('sqlite3_bind_text', INT, STMT, INT, STRING, INT, PTR)
 
 export const sqlite3_busy_timeout = xWrapASM('sqlite3_busy_timeout', INT, DB, INT)
 export const sqlite3_changes = xWrapASM('sqlite3_changes', INT, DB)
@@ -62,6 +67,21 @@ export const sqlite3_expanded_sql = xWrapASM('sqlite3_expanded_sql', STRING, STM
 export const sqlite3_extended_errcode = xWrapASM('sqlite3_extended_errcode', INT, DB)
 export const sqlite3_extended_result_codes = xWrapASM('sqlite3_extended_result_codes', INT, DB, INT)
 
+const execCallback = new FuncPtrAdapter({
+	signature: 'i(pipp)',
+	bindScope: 'transient',
+	callProxy: (cb) => {
+		return (_, nc, cv, cn) => {
+			try {
+				return cb(heap.cArgvToJs(nc, cv), heap.cArgvToJs(nc, cn)) | 0
+			} catch (e) {
+				return e.resultCode || C_API.SQLITE_ERROR
+			}
+		}
+	},
+})
+export const sqlite3_exec = xWrapASM('sqlite3_exec', INT, DB, SFLEXI, execCallback, PTR, PPTR)
+
 export const sqlite3_file_control = xWrapASM('sqlite3_file_control', INT, DB, STRING, INT, PTR)
 export const sqlite3_finalize = xWrapASM('sqlite3_finalize', INT, STMT)
 export const sqlite3_get_auxdata = xWrapASM('sqlite3_get_auxdata', PTR, CONTEXT, INT)
@@ -75,6 +95,9 @@ export const sqlite3_limit = xWrapASM('sqlite3_limit', INT, DB, INT, INT)
 export const sqlite3_malloc = xWrapASM('sqlite3_malloc', PTR, INT)
 export const sqlite3_open = xWrapASM('sqlite3_open', INT, STRING, PTR)
 export const sqlite3_open_v2 = xWrapASM('sqlite3_open_v2', INT, STRING, PTR, INT, STRING)
+
+export const sqlite3_prepare_v3_full = xWrapASM('sqlite3_prepare_v3', INT, DB, PTR, INT, INT, PPTR, PPTR)
+export const sqlite3_prepare_v3_basic = xWrapASM('sqlite3_prepare_v3', INT, DB, STRING, INT, INT, PPTR, PPTR)
 
 export const sqlite3_reset = xWrapASM('sqlite3_reset', INT, STMT)
 export const sqlite3_result_blob = xWrapASM('sqlite3_result_blob', UDF, CONTEXT, PTR, INT, PTR)

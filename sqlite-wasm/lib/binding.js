@@ -1,4 +1,4 @@
-import { ptrIR } from './constants.js'
+import { HAS_BIGINT, ptrIR } from './constants.js'
 import { getASM, structs } from './base.js'
 import { abort } from './util.js'
 import * as util from './util.js'
@@ -35,13 +35,13 @@ const __xJSON = (v) => JSON.parse(heap.cstrToJs(v))
 const shared = {
 	i8: (i) => (i | 0) & 0xff,
 	i16: (i) => (i | 0) & 0xffff,
-	i64: BigInt,
 	i32: __xInt,
 	int: __xInt,
 	f32: __xFloat,
 	f64: __xFloat,
 	float: __xFloat,
 	double: __xFloat,
+	...(HAS_BIGINT ? { i64: BigInt } : null),
 }
 
 const special = [
@@ -168,7 +168,7 @@ const __wrapFunction = (func, resultType, argTypes) => {
 	}
 }
 
-/** @typedef {import('./types').ArgTypeName} ArgTypeName */
+/** @typedef {import('./types').ArgTypes} ArgTypes */
 /** @typedef {import('./types').ResultTypeMap} ResultTypeMap */
 
 /**
@@ -176,7 +176,7 @@ const __wrapFunction = (func, resultType, argTypes) => {
  *
  * the creation is deferred until the first call
  *
- * @template {ArgTypeName[]} P
+ * @template {ArgTypes} P
  * @template {keyof ResultTypeMap | null | undefined} R
  * @param {string} name name of exported function
  * @param {R} resultType return type
@@ -217,12 +217,17 @@ for (const t of Object.keys(shared)) {
 	xResult.set(k, adaptPtr)
 }
 
+/**
+ * @abstract
+ * @template {unknown} [T=unknown]
+ */
 export class AbstractArgAdapter {
 	constructor(opt) {
 		this.name = opt?.name ?? 'unnamed adapter'
 	}
 
 	/**
+	 * @abstract
 	 * @param {unknown} v
 	 * @param {unknown[]} argv
 	 * @param {number} idx
@@ -232,6 +237,10 @@ export class AbstractArgAdapter {
 	}
 }
 
+/**
+ * @template {Function} [T=Function]
+ * @extends {AbstractArgAdapter<T>}
+ */
 export class FuncPtrAdapter extends AbstractArgAdapter {
 	/** @type {Map<string, unknown[]>} */
 	#cmap = new Map()

@@ -1,6 +1,10 @@
+import type { AbstractArgAdapter } from './binding'
+
 declare const pointerTag: unique symbol
 
 export type WasmPointer<T = unknown> = number & { readonly [pointerTag]: T }
+
+export type SQLValue = string | number | null | BigInt | Uint8Array | Int8Array | ArrayBuffer
 
 export type VersionInfo = {
 	SQLITE_VERSION: string
@@ -52,8 +56,8 @@ export interface ArgTypeMap extends SharedTypeMap {
 	'sqlite3_changeset_iter*': WasmPointer<'changeset_iter'>
 }
 
-export type ArgTypeName = keyof ArgTypeMap
+export type ArgTypes = Array<keyof ArgTypeMap | AbstractArgAdapter>
 
-export type MappedArgs<T extends ArgTypeName[]> = {
-	[Index in keyof T]: ArgTypeMap[T[Index]]
+export type MappedArgs<T extends ArgTypes> = {
+	[Index in keyof T]: T[Index] extends AbstractArgAdapter<infer R> ? R : ArgTypeMap[T[Index]]
 }

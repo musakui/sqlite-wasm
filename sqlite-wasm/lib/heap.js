@@ -1,4 +1,4 @@
-import { ptrIR, ptrSizeof } from './constants.js'
+import { HAS_BIGINT, ptrIR, ptrSizeof } from './constants.js'
 import { abort, isBindableTypedArray } from './util.js'
 import {
 	//
@@ -235,8 +235,10 @@ export const poke = (ptr, value, type = 'i8') => {
 				heap64f()[p >> 3] = value
 				continue
 			case 'i64':
-				heap64()[p >> 3] = BigInt(value)
-				continue
+				if (HAS_BIGINT) {
+					heap64()[p >> 3] = BigInt(value)
+					continue
+				}
 			default:
 				abort(`Invalid type for poke(): ${type}`)
 		}

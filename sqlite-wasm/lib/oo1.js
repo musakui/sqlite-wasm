@@ -77,7 +77,7 @@ const bindOne = function f(stmt, ndx, bindType, val) {
 		f._ = {
 			string: function (stmt, ndx, val, asBlob) {
 				const [pStr, n] = heap.allocCStringWithLength(val)
-				const f = asBlob ? capi.sqlite3_bind_blob : capi.sqlite3_bind_text
+				const f = asBlob ? capi_m.sqlite3_bind_blob_raw : capi_m.sqlite3_bind_text_raw
 				return f(stmt.pointer, ndx, pStr, n, C_API.SQLITE_WASM_DEALLOC)
 			},
 		}
@@ -305,7 +305,7 @@ export const installOO1 = (sqlite3) => {
 			if (postInitSql instanceof Function) {
 				postInitSql(this, sqlite3)
 			} else if (postInitSql) {
-				checkSqlite3Rc(pDb, capi.sqlite3_exec(pDb, postInitSql, 0, 0, 0))
+				checkSqlite3Rc(pDb, capi_m.sqlite3_exec(pDb, postInitSql, 0, 0, 0))
 			}
 		} catch (e) {
 			this.close()
@@ -445,7 +445,7 @@ export const installOO1 = (sqlite3) => {
 				heap.poke(pSql + sqlByteLen, 0)
 				while (pSql && heap.peek(pSql, 'i8')) {
 					heap.pokePtr([ppStmt, pzTail], 0)
-					DB.checkRc(this, capi.sqlite3_prepare_v3(this.pointer, pSql, sqlByteLen, 0, ppStmt, pzTail))
+					DB.checkRc(this, capi_m.sqlite3_prepare_v3_full(this.pointer, pSql, sqlByteLen, 0, ppStmt, pzTail))
 					const pStmt = heap.peekPtr(ppStmt)
 					pSql = heap.peekPtr(pzTail)
 					sqlByteLen = pSqlEnd - pSql

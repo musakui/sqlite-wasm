@@ -1,4 +1,4 @@
-import { capi as capi_ori, sqliteError, C_API, structs } from './base.js'
+import { sqliteError, C_API, structs } from './base.js'
 import { abort, isPtr, checkOPFS } from './util.js'
 import * as capi from './capi.js'
 import * as heap from './heap.js'
@@ -57,7 +57,7 @@ export const initPool = async (sqlite3, pool) => {
 			OpfsSAHPoolDb.prototype = Object.create(oo1.DB.prototype)
 			poolUtil.OpfsSAHPoolDb = OpfsSAHPoolDb
 			oo1.DB.dbCtorHelper.setVfsPostOpenSql(theVfs.pointer, (oo1Db) => {
-				capi_ori.sqlite3_exec(oo1Db, ['pragma journal_mode=DELETE;', 'pragma cache_size=-16384;'], 0, 0, 0)
+				capi.sqlite3_exec(oo1Db, ['pragma journal_mode=DELETE;', 'pragma cache_size=-16384;'], 0, 0, 0)
 			})
 		}
 	} catch (err) {

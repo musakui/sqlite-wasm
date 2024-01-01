@@ -1,5 +1,5 @@
 import { getASM, capi, wasm, C_API, cstrToJs, sqliteError, structs } from './base.js'
-import { functionEntry, allocFromTypedArray, cArgvToJs } from './heap.js'
+import { functionEntry, allocFromTypedArray } from './heap.js'
 import { abort } from './util.js'
 
 import { sqlite3_wasm_db_error, sqlite3_vfs_find } from './capi.js'
@@ -18,29 +18,6 @@ export const installWhWasm = (sqlite3) => {
 	wasm.bindingSignatures = [
 		['sqlite3_busy_handler', 'int', ['sqlite3*', FPA({ signature: 'i(pi)', contextKey }), '*']],
 		['sqlite3_commit_hook', 'void*', ['sqlite3*', FPA({ name: 'sqlite3_commit_hook', signature: 'i(p)', contextKey }), '*']],
-		[
-			'sqlite3_exec',
-			'int',
-			[
-				'sqlite3*',
-				'string:flexible',
-				FPA({
-					signature: 'i(pipp)',
-					bindScope: 'transient',
-					callProxy: (callback) => {
-						return (_, nc, cv, cn) => {
-							try {
-								return callback(cArgvToJs(nc, cv), cArgvToJs(nc, cn)) | 0
-							} catch (e) {
-								return e.resultCode || C_API.SQLITE_ERROR
-							}
-						}
-					},
-				}),
-				'*',
-				'**',
-			],
-		],
 		['sqlite3_free', undefined, '*'],
 		['sqlite3_realloc', '*', '*', 'int'],
 		[
@@ -90,7 +67,6 @@ export const installWhWasm = (sqlite3) => {
 		['sqlite3_value_subtype', 'int', 'sqlite3_value*'],
 		['sqlite3_value_text', 'string', 'sqlite3_value*'],
 		['sqlite3_value_type', 'int', 'sqlite3_value*'],
-		['sqlite3_vfs_find', '*', 'string'],
 	]
 
 	wasm.bindingSignatures.int64 = [
@@ -743,6 +719,7 @@ export const installWhWasm = (sqlite3) => {
 		const __bindBlob = wasm.xWrap('sqlite3_bind_blob', 'int', ['sqlite3_stmt*', 'int', '*', 'int', '*'])
 
 		capi.sqlite3_bind_text = function f(pStmt, iCol, text, nText, xDestroy) {
+			console.log(pStmt, iCol, text, nText)
 			if (f.length !== arguments.length) {
 				return __dbArgcMismatch(capi.sqlite3_db_handle(pStmt), 'sqlite3_bind_text', f.length)
 			} else if (util.isPtr(text) || null === text) {

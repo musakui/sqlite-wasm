@@ -40,7 +40,15 @@ export let StructBinder = null
 
 export const wasm = Object.create(null)
 
-export const capi = Object.create(null)
+const DEBUG_CAPI = 0
+const capi_ori = Object.create(null)
+
+export const capi = DEBUG_CAPI ? new Proxy(capi_ori, {
+	get (target, prop) {
+		console.log(prop)
+		return target[prop]
+	}
+}) : capi_ori
 
 /** @type {Readonly<Record<string, number>>} */
 export const C_API = Object.create(null)
