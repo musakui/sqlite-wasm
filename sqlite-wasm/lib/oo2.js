@@ -1,8 +1,8 @@
-import { C_API, capi as capi_o, sqliteError } from './base.js'
+import { C_API, sqliteError } from './base.js'
 import * as heap from './heap.js'
 import * as capi from './capi.js'
-import * as wasm from './wasm.js'
 import * as pstack from './pstack.js'
+import { sqlite3_wasm_db_vfs } from './wasm.js'
 
 /** @typedef {import('./types').WasmPointer<'db'>} DBPointer */
 /** @typedef {import('./types').WasmPointer<'stmt'>} StmtPointer */
@@ -35,47 +35,33 @@ const affirmNotLocked = (s, op = 'op') => {
 }
 
 export class DB {
-	constructor(filename = '', flags = '', vfs = null) {
-		const fn = filename || ':memory:'
-		const flagStr = flags || 'c'
-		const vfsName = vfs ?? null
-
-		let oflags = 0
-		if (flagStr.indexOf('c') > -1) {
-			oflags |= C_API.SQLITE_OPEN_CREATE | C_API.SQLITE_OPEN_READWRITE
-		}
-		if (flagStr.indexOf('w') > -1) {
-			oflags |= C_API.SQLITE_OPEN_READWRITE
-		}
-		if (oflags === 0) {
-			oflags |= C_API.SQLITE_OPEN_READONLY
-		}
-
+	constructor(flags = 0, vfs = null) {
 		/** @type {DBPointer} */
 		let pDb
+
+		const oflags = flags || C_API.SQLITE_OPEN_READONLY
 		const stack = pstack.getPtr()
 		try {
 			const pPtr = pstack.allocPtr()
-			let rc = capi_o.sqlite3_open_v2(fn, pPtr, oflags, vfsName || 0)
+			let rc = capi.sqlite3_open_v2(fn, pPtr, oflags, vfs || 0)
 			pDb = heap.peekPtr(pPtr)
 			checkRc(rc, pDb)
 			capi.sqlite3_extended_result_codes(pDb, 1)
 		} catch (e) {
-			if (pDb) capi_o.sqlite3_close_v2(pDb)
+			if (pDb) capi.sqlite3_close_v2_raw(pDb)
 			throw e
 		} finally {
 			pstack.restore(stack)
 		}
-		this.filename = fnJs
-		__ptrMap.set(this, pDb)
-		__stmtMap.set(this, new Map())
 		try {
-			const pVfs = wasm.sqlite3_js_db_vfs(pDb)
+			const pVfs = sqlite3_wasm_db_vfs(pDb, 0)
 			if (!pVfs) sqliteError('cannot get VFS for new db')
 		} catch (e) {
 			this.close()
 			throw e
 		}
+		__ptrMap.set(this, pDb)
+		__stmtMap.set(this, new Map())
 	}
 
 	/** @return {DBPointer} */
@@ -94,7 +80,7 @@ export class DB {
 		}
 		__ptrMap.delete(this)
 		__stmtMap.delete(this)
-		capi_o.sqlite3_close_v2(pDb)
+		capi.sqlite3_close_v2_raw(pDb)
 	}
 }
 
@@ -114,7 +100,6 @@ export class Stmt {
 		this.#db = db
 		__ptrMap.set(this, pSt)
 		__stmtMap.get(db)?.set(pSt, this)
-		this.parameterCount = capi.sqlite3_bind_parameter_count(pSt)
 	}
 
 	/** @return {StmtPointer} */

@@ -3,23 +3,22 @@ import { C_API } from './base.js'
 import * as heap from './heap.js'
 import * as capi from './capi.js'
 import { DB, Stmt } from './oo2.js'
+import { bigIntFitsDouble } from './util.js'
+
+/** @typedef {import('./types').WasmPointer<'stmt'>} StmtPointer */
 
 /**
- * @param {Stmt} stmt
+ * @param {StmtPtr} pSt
  * @param {number} idx
  * @param {number} [asType]
  */
-export const stmt_col_result = (stmt, idx, asType) => {
-	const pSt = stmt.pointer
+const column_result = (pSt, idx, asType) => {
 	switch (asType ?? capi.sqlite3_column_type(pSt, idx)) {
 		case C_API.SQLITE_NULL:
 			return null
 		case C_API.SQLITE_INTEGER:
 			const num = capi.sqlite3_column_int64(pSt, idx)
-			if (num >= Number.MIN_SAFE_INTEGER && num <= Number.MAX_SAFE_INTEGER) {
-				return Number(num)
-			}
-			return num
+			return bigIntFitsDouble(num) ? Number(num) : num
 		case C_API.SQLITE_FLOAT:
 			return capi.sqlite3_column_double(pSt, idx)
 		case C_API.SQLITE_TEXT:
@@ -36,10 +35,26 @@ export const stmt_col_result = (stmt, idx, asType) => {
 }
 
 /**
- * @param {import('./oo2').StmtPointer} pSt
+ * @param {StmtPointer} pSt
  */
-const getRow = (pSt) => {
+const getRowAsArray = (pSt) => {
+	const length = capi.sqlite3_column_count(pSt)
+	return Array.from({ length }, (_, i) => column_result(pSt, i))
+}
 
+/**
+ * @param {StmtPointer} pSt
+ */
+const getRowAsObject = (pSt) => {
+	const length = capi.sqlite3_column_count(pSt)
+	const arr = Array.from({ length }, (_, i) => {
+		return /** @type {const} */ ([
+			//
+			capi.sqlite3_column_name(pSt, i),
+			column_result(pSt, i),
+		])
+	})
+	return Object.fromEntries(arr)
 }
 
 /**

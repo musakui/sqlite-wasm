@@ -95,6 +95,7 @@ export const sqlite3_limit = xWrapASM('sqlite3_limit', INT, DB, INT, INT)
 export const sqlite3_malloc = xWrapASM('sqlite3_malloc', PTR, INT)
 export const sqlite3_open = xWrapASM('sqlite3_open', INT, STRING, PTR)
 export const sqlite3_open_v2 = xWrapASM('sqlite3_open_v2', INT, STRING, PTR, INT, STRING)
+export const sqlite3_close_v2_raw = xWrapASM('sqlite3_close_v2', INT, DB)
 
 export const sqlite3_prepare_v3_full = xWrapASM('sqlite3_prepare_v3', INT, DB, PTR, INT, INT, PPTR, PPTR)
 export const sqlite3_prepare_v3_basic = xWrapASM('sqlite3_prepare_v3', INT, DB, STRING, INT, INT, PPTR, PPTR)
