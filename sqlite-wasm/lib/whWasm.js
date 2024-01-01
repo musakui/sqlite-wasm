@@ -9,11 +9,13 @@ import { sqlite3_result_js, sqlite3_result_error_js, sqlite3_values_to_js } from
 import * as util from './util.js'
 import * as heap from './heap.js'
 import * as logger from './logger.js'
+import { xArg, xWrap, FuncPtrAdapter } from './binding.js'
+
+const contextKey = (a) => a[0]
+const FPA = (o) => new FuncPtrAdapter(o)
 
 export const installWhWasm = (sqlite3) => {
 	const asm = getASM()
-	const contextKey = (a) => a[0]
-	const FPA = (o) => new wasm.xWrap.FuncPtrAdapter(o)
 
 	wasm.bindingSignatures = [
 		['sqlite3_busy_handler', 'int', ['sqlite3*', FPA({ signature: 'i(pi)', contextKey }), '*']],
@@ -54,19 +56,6 @@ export const installWhWasm = (sqlite3) => {
 		],
 		['sqlite3_set_auxdata', undefined, ['sqlite3_context*', 'int', '*', FPA({ name: 'xDestroyAuxData', signature: 'v(*)', contextKey })]],
 		['sqlite3_trace_v2', 'int', ['sqlite3*', 'int', FPA({ name: 'sqlite3_trace_v2::callback', signature: 'i(ippp)', contextKey }), '*']],
-		['sqlite3_value_blob', '*', 'sqlite3_value*'],
-		['sqlite3_value_bytes', 'int', 'sqlite3_value*'],
-		['sqlite3_value_double', 'f64', 'sqlite3_value*'],
-		['sqlite3_value_dup', 'sqlite3_value*', 'sqlite3_value*'],
-		['sqlite3_value_free', undefined, 'sqlite3_value*'],
-		['sqlite3_value_frombind', 'int', 'sqlite3_value*'],
-		['sqlite3_value_int', 'int', 'sqlite3_value*'],
-		['sqlite3_value_nochange', 'int', 'sqlite3_value*'],
-		['sqlite3_value_numeric_type', 'int', 'sqlite3_value*'],
-		['sqlite3_value_pointer', '*', 'sqlite3_value*', 'string:static'],
-		['sqlite3_value_subtype', 'int', 'sqlite3_value*'],
-		['sqlite3_value_text', 'string', 'sqlite3_value*'],
-		['sqlite3_value_type', 'int', 'sqlite3_value*'],
 	]
 
 	wasm.bindingSignatures.int64 = [
@@ -284,24 +273,23 @@ export const installWhWasm = (sqlite3) => {
 	}
 
 	{
-		const __xArgPtr = wasm.xWrap.argAdapter('*')
+		const __xArgPtr = xArg.get('*')
 		const nilType = function () {}
-		wasm.xWrap.argAdapter('sqlite3_stmt*', (v) => __xArgPtr(v instanceof (sqlite3?.oo1?.Stmt || nilType) ? v.pointer : v))('sqlite3*', (v) =>
-			__xArgPtr(v instanceof (sqlite3?.oo1?.DB || nilType) ? v.pointer : v)
-		)('sqlite3_vfs*', (v) => {
+		xArg.set('sqlite3_stmt*', (v) => __xArgPtr(v instanceof (sqlite3?.oo1?.Stmt || nilType) ? v.pointer : v))
+		xArg.set('sqlite3*', (v) => __xArgPtr(v instanceof (sqlite3?.oo1?.DB || nilType) ? v.pointer : v))
+		xArg.set('sqlite3_vfs*', (v) => {
 			if ('string' === typeof v) return sqlite3_vfs_find(v) || sqliteError(C_API.SQLITE_NOTFOUND, `Unknown sqlite3_vfs name ${v}`)
 			return __xArgPtr(v instanceof structs.sqlite3_vfs ? v.pointer : v)
 		})
 
 		if (0 === asm.sqlite3_step.length) {
-			wasm.xWrap.doArgcCheck = false
 			warn('Disabling sqlite3.wasm.xWrap.doArgcCheck due to environmental quirks.')
 		}
 		for (const e of wasm.bindingSignatures) {
-			capi[e[0]] = wasm.xWrap.apply(null, e)
+			capi[e[0]] = xWrap(...e)
 		}
 		for (const e of wasm.bindingSignatures.int64) {
-			capi[e[0]] = wasm.xWrap.apply(null, e)
+			capi[e[0]] = xWrap(...e)
 		}
 
 		delete wasm.bindingSignatures
@@ -310,7 +298,7 @@ export const installWhWasm = (sqlite3) => {
 			abort('Internal error: cannot resolve exported function', 'entry SQLITE_WASM_DEALLOC (==' + capi.SQLITE_WASM_DEALLOC + ').')
 		}
 
-		capi.sqlite3_vtab_config = wasm.xWrap('sqlite3_wasm_vtab_config', 'int', ['sqlite3*', 'int', 'int'])
+		capi.sqlite3_vtab_config = xWrap('sqlite3_wasm_vtab_config', 'int', ['sqlite3*', 'int', 'int'])
 	}
 
 	const __dbArgcMismatch = (pDb, f, n) => {
@@ -321,7 +309,7 @@ export const installWhWasm = (sqlite3) => {
 		return sqlite3_wasm_db_error(pDb, C_API.SQLITE_FORMAT, 'SQLITE_UTF8 is the only supported encoding.')
 	}
 
-	const __argPDb = (pDb) => wasm.xWrap.argAdapter('sqlite3*')(pDb)
+	const __argPDb = (pDb) => xArg.get('sqlite3*')(pDb)
 	const __argStr = (str) => (util.isPtr(str) ? cstrToJs(str) : str)
 	const __dbCleanupMap = function (pDb, mode) {
 		pDb = __argPDb(pDb)
@@ -421,7 +409,7 @@ export const installWhWasm = (sqlite3) => {
 	}
 
 	{
-		const __sqlite3CloseV2 = wasm.xWrap('sqlite3_close_v2', 'int', 'sqlite3*')
+		const __sqlite3CloseV2 = xWrap('sqlite3_close_v2', 'int', 'sqlite3*')
 		capi.sqlite3_close_v2 = function (pDb) {
 			if (1 !== arguments.length) return __dbArgcMismatch(pDb, 'sqlite3_close_v2', 1)
 			if (pDb) {
@@ -434,7 +422,7 @@ export const installWhWasm = (sqlite3) => {
 	}
 
 	if (capi.sqlite3session_table_filter) {
-		const __sqlite3SessionDelete = wasm.xWrap('sqlite3session_delete', undefined, ['sqlite3_session*'])
+		const __sqlite3SessionDelete = xWrap('sqlite3session_delete', undefined, ['sqlite3_session*'])
 		capi.sqlite3session_delete = function (pSession) {
 			if (1 !== arguments.length) {
 				return __dbArgcMismatch(pDb, 'sqlite3session_delete', 1)
@@ -449,17 +437,17 @@ export const installWhWasm = (sqlite3) => {
 		const contextKey = (argv, argIndex) => {
 			return 'argv[' + argIndex + ']:' + argv[0] + ':' + cstrToJs(argv[1]).toLowerCase()
 		}
-		const __sqlite3CreateCollationV2 = wasm.xWrap('sqlite3_create_collation_v2', 'int', [
+		const __sqlite3CreateCollationV2 = xWrap('sqlite3_create_collation_v2', 'int', [
 			'sqlite3*',
 			'string',
 			'int',
 			'*',
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xCompare',
 				signature: 'i(pipip)',
 				contextKey,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xDestroy',
 				signature: 'v(p)',
 				contextKey,
@@ -552,53 +540,53 @@ export const installWhWasm = (sqlite3) => {
 			},
 		})
 
-		const __sqlite3CreateFunction = wasm.xWrap('sqlite3_create_function_v2', 'int', [
+		const __sqlite3CreateFunction = xWrap('sqlite3_create_function_v2', 'int', [
 			'sqlite3*',
 			'string',
 			'int',
 			'int',
 			'*',
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xFunc',
 				...__cfProxy.xFunc,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xStep',
 				...__cfProxy.xInverseAndStep,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xFinal',
 				...__cfProxy.xFinalAndValue,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xDestroy',
 				...__cfProxy.xDestroy,
 			}),
 		])
 
-		const __sqlite3CreateWindowFunction = wasm.xWrap('sqlite3_create_window_function', 'int', [
+		const __sqlite3CreateWindowFunction = xWrap('sqlite3_create_window_function', 'int', [
 			'sqlite3*',
 			'string',
 			'int',
 			'int',
 			'*',
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xStep',
 				...__cfProxy.xInverseAndStep,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xFinal',
 				...__cfProxy.xFinalAndValue,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xValue',
 				...__cfProxy.xFinalAndValue,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xInverse',
 				...__cfProxy.xInverseAndStep,
 			}),
-			new wasm.xWrap.FuncPtrAdapter({
+			FPA({
 				name: 'xDestroy',
 				...__cfProxy.xDestroy,
 			}),
@@ -688,8 +676,8 @@ export const installWhWasm = (sqlite3) => {
 		}
 
 		const __prepare = {
-			basic: wasm.xWrap('sqlite3_prepare_v3', 'int', ['sqlite3*', 'string', 'int', 'int', '**', '**']),
-			full: wasm.xWrap('sqlite3_prepare_v3', 'int', ['sqlite3*', '*', 'int', 'int', '**', '**']),
+			basic: xWrap('sqlite3_prepare_v3', 'int', ['sqlite3*', 'string', 'int', 'int', '**', '**']),
+			full: xWrap('sqlite3_prepare_v3', 'int', ['sqlite3*', '*', 'int', 'int', '**', '**']),
 		}
 
 		capi.sqlite3_prepare_v3 = function f(pDb, sql, sqlLen, prepFlags, ppStmt, pzTail) {
@@ -715,8 +703,8 @@ export const installWhWasm = (sqlite3) => {
 	}
 
 	{
-		const __bindText = wasm.xWrap('sqlite3_bind_text', 'int', ['sqlite3_stmt*', 'int', 'string', 'int', '*'])
-		const __bindBlob = wasm.xWrap('sqlite3_bind_blob', 'int', ['sqlite3_stmt*', 'int', '*', 'int', '*'])
+		const __bindText = xWrap('sqlite3_bind_text', 'int', ['sqlite3_stmt*', 'int', 'string', 'int', '*'])
+		const __bindBlob = xWrap('sqlite3_bind_blob', 'int', ['sqlite3_stmt*', 'int', '*', 'int', '*'])
 
 		capi.sqlite3_bind_text = function f(pStmt, iCol, text, nText, xDestroy) {
 			console.log(pStmt, iCol, text, nText)
@@ -773,6 +761,4 @@ export const installWhWasm = (sqlite3) => {
 			}
 		}
 	}
-
-	wasm.xWrap.FuncPtrAdapter.warnOnUse = true
 }

@@ -113,16 +113,6 @@ export const xResult = new Map([
 /** @param {Function} fn */
 const __argMismatch = (fn) => abort(`${fn.name || 'func'} requires ${fn.length} arg(s)`)
 
-const parseArgs = (args) => {
-	let [fArg, resultType, ...argTypes] = args
-	if (args.length === 3 && Array.isArray(args[2])) {
-		argTypes = args[2]
-	}
-	if (util.isPtr(fArg)) {
-		fArg = heap.functionEntry(fArg) || abort('func ptr not found in Table')
-	}
-	const xf = util.isFunction(fArg) ? fArg : xGet(fArg)
-}
 
 /**
  * @param {unknown} resultType
@@ -201,7 +191,17 @@ export const xWrapASM = (name, resultType, ...argTypes) => {
 /**
  * @param {...unknown} args
  */
-export const xWrap = (...args) => {}
+export const xWrap = (...args) => {
+	let [fArg, resultType, ...argTypes] = args
+	if (args.length === 3 && Array.isArray(args[2])) {
+		argTypes = args[2]
+	}
+	if (util.isPtr(fArg)) {
+		fArg = heap.functionEntry(fArg) || abort('func ptr not found in Table')
+	}
+	const xf = util.isFunction(fArg) ? fArg : xGet(fArg)
+	return __wrapFunction(xf, resultType, argTypes)
+}
 
 export const xCall = (fname, ...args) => {
 	const fn = xGet(fname)
@@ -216,6 +216,25 @@ for (const t of Object.keys(shared)) {
 	xArg.set(k, adaptPtr)
 	xResult.set(k, adaptPtr)
 }
+
+/*
+	const __xAdapter = function (func, argc, typeName, adapter, modeName, xcvPart) {
+		if ('string' === typeof typeName) {
+			if (1 === argc) return xcvPart.get(typeName)
+			else if (2 === argc) {
+				if (!adapter) {
+					delete xcvPart.get(typeName)
+					return func
+				} else if (!(adapter instanceof Function)) {
+					toss(modeName, 'requires a function argument.')
+				}
+				xcvPart.set(typeName, adapter)
+				return func
+			}
+		}
+		toss('Invalid arguments to', modeName)
+	}
+*/
 
 /**
  * @abstract

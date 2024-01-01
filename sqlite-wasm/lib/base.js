@@ -2,7 +2,6 @@ import { getASM, getMemory } from './instance.js'
 import { abort, isPtr, typedArrayToString } from './util.js'
 
 import { Jaccwabyt } from './jaccwabyt.js'
-import { WhWasmUtilInstaller } from './whWasmUtil.js'
 
 /** @typedef {import('./types').WasmPointer} WasmPointer */
 
@@ -147,8 +146,6 @@ export const setup = () => {
 			C_API[k] = v
 		}
 	}
-
-	WhWasmUtilInstaller(wasm)
 }
 
 /** @param {number} rc */

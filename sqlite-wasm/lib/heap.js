@@ -430,6 +430,9 @@ export const allocPtr = (howMany = 1, safePtrSize = true) => __allocPtr(howMany,
 
 export const scopedAllocPtr = (howMany = 1, safePtrSize = true) => __allocPtr(howMany, safePtrSize, scopedAlloc)
 
+/**
+ * @param {string} str
+ */
 export const jstrlen = (str) => {
 	if ('string' !== typeof str) return null
 	const n = str.length
@@ -447,6 +450,10 @@ export const jstrlen = (str) => {
 	return len
 }
 
+/**
+ * @param {string} jstr
+ * @param {Int8Array | Uint8Array} tgt
+ */
 export const jstrcpy = (jstr, tgt, offset = 0, maxBytes = -1, addNul = true) => {
 	if (!tgt || (!(tgt instanceof Int8Array) && !(tgt instanceof Uint8Array))) {
 		toss('jstrcpy() target must be an Int8Array or Uint8Array.')

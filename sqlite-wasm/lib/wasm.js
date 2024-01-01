@@ -19,16 +19,15 @@ export const sqlite3_js_aggregate_context = (pCtx, n) => {
 export const sqlite3_js_db_export = (pDb, schema = 0) => {
 	pDb = xArg.get('sqlite3*')(pDb)
 	if (!pDb) return sqliteError('Invalid db')
-	const asm = getASM()
 	const scope = heap.scopedAllocPush()
 	let pOut
 	try {
 		const pSize = heap.scopedAlloc(8 + ptrSizeof)
 		const ppOut = pSize + 8
 		const zSchema = schema ? (util.isPtr(schema) ? schema : heap.scopedAllocCString('' + schema)) : 0
-		let rc = asm.sqlite3_wasm_db_serialize(pDb, zSchema, ppOut, pSize, 0)
+		let rc = getASM().sqlite3_wasm_db_serialize(pDb, zSchema, ppOut, pSize, 0)
 		if (rc) {
-			sqliteError(`Database serialization failed with code ${sqlite3_js_rc_str(rc)}`)
+			sqliteError(`db serialization failed with code ${sqlite3_js_rc_str(rc)}`)
 		}
 		pOut = heap.peekPtr(ppOut)
 		const nOut = heap.peek(pSize, 'i64')

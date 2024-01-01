@@ -1,10 +1,10 @@
-import { abort } from './util.js'
+import { abort, NO_OP } from './util.js'
 
 const DEFAULT_WASM_SRC = '../jswasm/sqlite3.wasm'
 
 const NOT_INITIALIZED = 'not initialized'
 
-const NO_OP = null // () => {}
+const DEBUG_IMPORTS = false
 
 const fdcall = ['close', 'read', 'seek', 'sync', 'write', 'fdstat_get']
 
@@ -25,7 +25,7 @@ const others = [
 // prettier-ignore
 /** @param {string[]} a */
 const noops = (a) => Object.fromEntries(a.map((c) => [
-	c, NO_OP || ((..._) => console.warn(`'${c}':`, _))
+	c, DEBUG_IMPORTS ? ((..._) => console.warn(`'${c}':`, _)) : NO_OP
 ]))
 
 /** @type {Promise<void> | null} */

@@ -35,6 +35,7 @@ export interface ResultTypeMap extends SharedTypeMap {
 	number: number
 	pointer: WasmPointer
 	'sqlite3*': WasmPointer<'db'>
+	'sqlite3_vfs*': WasmPointer<'vfs'>
 }
 
 export interface ArgTypeMap extends SharedTypeMap {

@@ -4,6 +4,8 @@ const MIN_BIGINT_64 = ~MAX_BIGINT_64
 
 const DECODER = new TextDecoder('utf8')
 
+export const NO_OP = () => {}
+
 /**
  * @param {string} msg
  * @param {unknown} [cause]
