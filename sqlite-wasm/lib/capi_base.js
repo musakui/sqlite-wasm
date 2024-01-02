@@ -156,3 +156,5 @@ export const sqlite3_value_type = __wrapASM('sqlite3_value_type', INT, VALUE)
 export const sqlite3_vfs_find = __wrapASM('sqlite3_vfs_find', PTR, STRING)
 export const sqlite3_vfs_register = __wrapASM('sqlite3_vfs_register', INT, VFS, INT)
 export const sqlite3_vfs_unregister = __wrapASM('sqlite3_vfs_unregister', INT, VFS)
+
+export const sqlite3_vtab_config = __wrapASM('sqlite3_wasm_vtab_config', INT, DB, INT, INT)

@@ -409,7 +409,7 @@ export const installOO1 = (sqlite3) => {
 			let ppStmt, pStmt
 			try {
 				ppStmt = pstack.alloc(8)
-				DB.checkRc(this, capi.sqlite3_prepare_v2(this.pointer, sql, -1, ppStmt, null))
+				DB.checkRc(this, capi_m.sqlite3_prepare_v3_basic(this.pointer, sql, -1, 0, ppStmt, null))
 				pStmt = heap.peekPtr(ppStmt)
 			} finally {
 				pstack.restore(stack)

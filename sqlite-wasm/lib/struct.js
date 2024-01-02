@@ -3,6 +3,7 @@ import { isPtr } from './util.js'
 import * as capi from './capi.js'
 import * as heap from './heap.js'
 import * as logger from './logger.js'
+import { xArg } from './binding.js'
 
 const mnames = [
 	'xCreate',
@@ -36,6 +37,17 @@ export const installStruct = (sqlite3) => {
 
 	sqlite3.vfs = vfs
 	sqlite3.vtab = vtab
+
+	const isDb = sqlite3?.oo1.DB ? (v) => v instanceof sqlite3.oo1.DB : (v) => false
+	const isSt = sqlite3?.oo1.Stmt ? (v) => v instanceof sqlite3.oo1.Stmt : (v) => false
+
+	const __xArgPtr = xArg.get('*')
+	xArg.set('sqlite3*', (v) => __xArgPtr(isDb(v) ? v.pointer : v))
+	xArg.set('sqlite3_stmt*', (v) => __xArgPtr(isSt(v) ? v.pointer : v))
+	xArg.set('sqlite3_vfs*', (v) => {
+		if ('string' === typeof v) return capi.sqlite3_vfs_find(v) || sqliteError(C_API.SQLITE_NOTFOUND, `Unknown sqlite3_vfs name ${v}`)
+		return __xArgPtr(v instanceof structs.sqlite3_vfs ? v.pointer : v)
+	})
 
 	const sii = structs.sqlite3_index_info
 
