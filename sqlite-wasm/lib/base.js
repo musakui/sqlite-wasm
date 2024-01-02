@@ -1,4 +1,3 @@
-import { DEBUG } from './constants.js'
 import { getASM, getMemory } from './instance.js'
 import { abort, isPtr, typedArrayToString } from './util.js'
 
@@ -40,9 +39,11 @@ export let StructBinder = null
 
 export const wasm = Object.create(null)
 
+const DEBUG_CAPI = !!import.meta.env.DEBUG_CAPI
+
 const capi_ori = Object.create(null)
 
-export const capi = DEBUG ? new Proxy(capi_ori, {
+export const capi = DEBUG_CAPI ? new Proxy(capi_ori, {
 	get (target, prop) {
 		console.log('capi accessed', prop)
 		return target[prop]

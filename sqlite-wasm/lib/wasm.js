@@ -4,13 +4,13 @@ import * as capi from './capi_base.js'
 import * as heap from './heap.js'
 import * as util from './util.js'
 import * as pstack_m from './pstack.js'
-import { xArg, xWrapASM } from './binding.js'
+import { xArg, __wrapASM } from './binding.js'
 
-export const sqlite3_wasm_db_reset = xWrapASM('sqlite3_wasm_db_reset', 'int', 'sqlite3*')
-export const sqlite3_wasm_db_vfs = xWrapASM('sqlite3_wasm_db_vfs', 'sqlite3_vfs*', 'sqlite3*', 'string')
-export const sqlite3_wasm_posix_create_file = xWrapASM('sqlite3_wasm_posix_create_file', 'int', 'string', '*', 'int')
-export const sqlite3_wasm_vfs_create_file = xWrapASM('sqlite3_wasm_vfs_create_file', 'int', 'sqlite3_vfs*', 'string', '*', 'int')
-export const sqlite3_wasm_vfs_unlink = xWrapASM('sqlite3_wasm_vfs_unlink', 'int', 'sqlite3_vfs*', 'string')
+export const sqlite3_wasm_db_reset = __wrapASM('sqlite3_wasm_db_reset', 'int', 'sqlite3*')
+export const sqlite3_wasm_db_vfs = __wrapASM('sqlite3_wasm_db_vfs', 'sqlite3_vfs*', 'sqlite3*', 'string')
+export const sqlite3_wasm_posix_create_file = __wrapASM('sqlite3_wasm_posix_create_file', 'int', 'string', '*', 'int')
+export const sqlite3_wasm_vfs_create_file = __wrapASM('sqlite3_wasm_vfs_create_file', 'int', 'sqlite3_vfs*', 'string', '*', 'int')
+export const sqlite3_wasm_vfs_unlink = __wrapASM('sqlite3_wasm_vfs_unlink', 'int', 'sqlite3_vfs*', 'string')
 
 export const sqlite3_js_aggregate_context = (pCtx, n) => {
 	return capi.sqlite3_aggregate_context(pCtx, n) || (n ? allocError(`Cannot allocate ${n} bytes for sqlite3_aggregate_context`) : 0)

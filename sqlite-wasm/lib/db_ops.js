@@ -5,7 +5,7 @@ import * as capi from './capi.js'
 import { DB, Stmt } from './oo2.js'
 import { bigIntFitsDouble } from './util.js'
 
-/** @typedef {import('./types').WasmPointer<'stmt'>} StmtPointer */
+/** @typedef {import('./types').StmtPointer} StmtPointer */
 
 /**
  * @param {StmtPtr} pSt

@@ -59,6 +59,7 @@ export const installWhWasm = (sqlite3) => {
 	]
 
 	wasm.bindingSignatures.int64 = [
+		/*
 		['sqlite3_changes64', 'i64', ['sqlite3*']],
 		['sqlite3_create_module', 'int', ['sqlite3*', 'string', 'sqlite3_module*', '*']],
 		['sqlite3_create_module_v2', 'int', ['sqlite3*', 'string', 'sqlite3_module*', '*', '*']],
@@ -72,6 +73,53 @@ export const installWhWasm = (sqlite3) => {
 		['sqlite3_preupdate_blobwrite', 'int', 'sqlite3*'],
 		['sqlite3_preupdate_count', 'int', 'sqlite3*'],
 		['sqlite3_preupdate_depth', 'int', 'sqlite3*'],
+		['sqlite3_preupdate_new', 'int', ['sqlite3*', 'int', '**']],
+		['sqlite3_preupdate_old', 'int', ['sqlite3*', 'int', '**']],
+		['sqlite3_realloc64', '*', '*', 'i64'],
+		['sqlite3_result_int64', undefined, '*', 'i64'],
+		['sqlite3_result_zeroblob64', 'int', '*', 'i64'],
+		['sqlite3_serialize', '*', 'sqlite3*', 'string', '*', 'int'],
+		['sqlite3_set_last_insert_rowid', undefined, ['sqlite3*', 'i64']],
+		['sqlite3_status64', 'int', 'int', '*', '*', 'int'],
+		['sqlite3_total_changes64', 'i64', ['sqlite3*']],
+		['sqlite3_uri_int64', 'i64', ['sqlite3_filename', 'string', 'i64']],
+		['sqlite3_value_int64', 'i64', 'sqlite3_value*'],
+		['sqlite3_vtab_collation', 'string', 'sqlite3_index_info*', 'int'],
+		['sqlite3_vtab_distinct', 'int', 'sqlite3_index_info*'],
+		['sqlite3_vtab_in', 'int', 'sqlite3_index_info*', 'int', 'int'],
+		['sqlite3_vtab_in_first', 'int', 'sqlite3_value*', '**'],
+		['sqlite3_vtab_in_next', 'int', 'sqlite3_value*', '**'],
+		['sqlite3_vtab_nochange', 'int', 'sqlite3_context*'],
+		['sqlite3_vtab_on_conflict', 'int', 'sqlite3*'],
+		['sqlite3_vtab_rhs_value', 'int', 'sqlite3_index_info*', 'int', '**'],
+		['sqlite3changegroup_add', 'int', ['sqlite3_changegroup*', 'int', 'void*']],
+		['sqlite3changegroup_delete', undefined, ['sqlite3_changegroup*']],
+		['sqlite3changegroup_new', 'int', ['**']],
+		['sqlite3changegroup_output', 'int', ['sqlite3_changegroup*', 'int*', '**']],
+		['sqlite3changeset_concat', 'int', ['int', 'void*', 'int', 'void*', 'int*', '**']],
+		['sqlite3changeset_conflict', 'int', ['sqlite3_changeset_iter*', 'int', '**']],
+		['sqlite3changeset_finalize', 'int', ['sqlite3_changeset_iter*']],
+		['sqlite3changeset_fk_conflicts', 'int', ['sqlite3_changeset_iter*', 'int*']],
+		['sqlite3changeset_invert', 'int', ['int', 'void*', 'int*', '**']],
+		['sqlite3changeset_new', 'int', ['sqlite3_changeset_iter*', 'int', '**']],
+		['sqlite3changeset_next', 'int', ['sqlite3_changeset_iter*']],
+		['sqlite3changeset_old', 'int', ['sqlite3_changeset_iter*', 'int', '**']],
+		['sqlite3changeset_op', 'int', ['sqlite3_changeset_iter*', '**', 'int*', 'int*', 'int*']],
+		['sqlite3changeset_pk', 'int', ['sqlite3_changeset_iter*', '**', 'int*']],
+		['sqlite3changeset_start', 'int', ['**', 'int', '*']],
+		['sqlite3changeset_start_v2', 'int', ['**', 'int', '*', 'int']],
+		['sqlite3session_attach', 'int', ['sqlite3_session*', 'string']],
+		['sqlite3session_changeset', 'int', ['sqlite3_session*', 'int*', '**']],
+		['sqlite3session_changeset_size', 'i64', ['sqlite3_session*']],
+		['sqlite3session_config', 'int', ['int', 'void*']],
+		['sqlite3session_create', 'int', ['sqlite3*', 'string', '**']],
+		['sqlite3session_diff', 'int', ['sqlite3_session*', 'string', 'string', '**']],
+		['sqlite3session_enable', 'int', ['sqlite3_session*', 'int']],
+		['sqlite3session_indirect', 'int', ['sqlite3_session*', 'int']],
+		['sqlite3session_isempty', 'int', ['sqlite3_session*']],
+		['sqlite3session_memory_used', 'i64', ['sqlite3_session*']],
+		['sqlite3session_object_config', 'int', ['sqlite3_session*', 'int', 'void*']],
+		['sqlite3session_patchset', 'int', ['sqlite3_session*', '*', '**']],
 		[
 			'sqlite3_preupdate_hook',
 			'*',
@@ -90,15 +138,6 @@ export const installWhWasm = (sqlite3) => {
 				'*',
 			],
 		],
-		['sqlite3_preupdate_new', 'int', ['sqlite3*', 'int', '**']],
-		['sqlite3_preupdate_old', 'int', ['sqlite3*', 'int', '**']],
-		['sqlite3_realloc64', '*', '*', 'i64'],
-		['sqlite3_result_int64', undefined, '*', 'i64'],
-		['sqlite3_result_zeroblob64', 'int', '*', 'i64'],
-		['sqlite3_serialize', '*', 'sqlite3*', 'string', '*', 'int'],
-		['sqlite3_set_last_insert_rowid', undefined, ['sqlite3*', 'i64']],
-		['sqlite3_status64', 'int', 'int', '*', '*', 'int'],
-		['sqlite3_total_changes64', 'i64', ['sqlite3*']],
 		[
 			'sqlite3_update_hook',
 			'*',
@@ -117,17 +156,7 @@ export const installWhWasm = (sqlite3) => {
 				'*',
 			],
 		],
-		['sqlite3_uri_int64', 'i64', ['sqlite3_filename', 'string', 'i64']],
-		['sqlite3_value_int64', 'i64', 'sqlite3_value*'],
-		['sqlite3_vtab_collation', 'string', 'sqlite3_index_info*', 'int'],
-		['sqlite3_vtab_distinct', 'int', 'sqlite3_index_info*'],
-		['sqlite3_vtab_in', 'int', 'sqlite3_index_info*', 'int', 'int'],
-		['sqlite3_vtab_in_first', 'int', 'sqlite3_value*', '**'],
-		['sqlite3_vtab_in_next', 'int', 'sqlite3_value*', '**'],
-
-		['sqlite3_vtab_nochange', 'int', 'sqlite3_context*'],
-		['sqlite3_vtab_on_conflict', 'int', 'sqlite3*'],
-		['sqlite3_vtab_rhs_value', 'int', 'sqlite3_index_info*', 'int', '**'],
+		*/
 	]
 
 	if (!!asm.sqlite3changegroup_add) {
@@ -144,15 +173,11 @@ export const installWhWasm = (sqlite3) => {
 
 		wasm.bindingSignatures.int64.push(
 			...[
-				['sqlite3changegroup_add', 'int', ['sqlite3_changegroup*', 'int', 'void*']],
 				[
 					'sqlite3changegroup_add_strm',
 					'int',
 					['sqlite3_changegroup*', FPA({ name: 'xInput', signature: 'i(ppp)', bindScope: 'transient' }), 'void*'],
 				],
-				['sqlite3changegroup_delete', undefined, ['sqlite3_changegroup*']],
-				['sqlite3changegroup_new', 'int', ['**']],
-				['sqlite3changegroup_output', 'int', ['sqlite3_changegroup*', 'int*', '**']],
 				[
 					'sqlite3changegroup_output_strm',
 					'int',
@@ -212,7 +237,6 @@ export const installWhWasm = (sqlite3) => {
 						'int',
 					],
 				],
-				['sqlite3changeset_concat', 'int', ['int', 'void*', 'int', 'void*', 'int*', '**']],
 				[
 					'sqlite3changeset_concat_strm',
 					'int',
@@ -225,10 +249,6 @@ export const installWhWasm = (sqlite3) => {
 						'void*',
 					],
 				],
-				['sqlite3changeset_conflict', 'int', ['sqlite3_changeset_iter*', 'int', '**']],
-				['sqlite3changeset_finalize', 'int', ['sqlite3_changeset_iter*']],
-				['sqlite3changeset_fk_conflicts', 'int', ['sqlite3_changeset_iter*', 'int*']],
-				['sqlite3changeset_invert', 'int', ['int', 'void*', 'int*', '**']],
 				[
 					'sqlite3changeset_invert_strm',
 					'int',
@@ -239,33 +259,13 @@ export const installWhWasm = (sqlite3) => {
 						'void*',
 					],
 				],
-				['sqlite3changeset_new', 'int', ['sqlite3_changeset_iter*', 'int', '**']],
-				['sqlite3changeset_next', 'int', ['sqlite3_changeset_iter*']],
-				['sqlite3changeset_old', 'int', ['sqlite3_changeset_iter*', 'int', '**']],
-				['sqlite3changeset_op', 'int', ['sqlite3_changeset_iter*', '**', 'int*', 'int*', 'int*']],
-				['sqlite3changeset_pk', 'int', ['sqlite3_changeset_iter*', '**', 'int*']],
-				['sqlite3changeset_start', 'int', ['**', 'int', '*']],
 				['sqlite3changeset_start_strm', 'int', ['**', FPA({ name: 'xInput', signature: 'i(ppp)', bindScope: 'transient' }), 'void*']],
-				['sqlite3changeset_start_v2', 'int', ['**', 'int', '*', 'int']],
 				['sqlite3changeset_start_v2_strm', 'int', ['**', FPA({ name: 'xInput', signature: 'i(ppp)', bindScope: 'transient' }), 'void*', 'int']],
-				['sqlite3session_attach', 'int', ['sqlite3_session*', 'string']],
-				['sqlite3session_changeset', 'int', ['sqlite3_session*', 'int*', '**']],
-				['sqlite3session_changeset_size', 'i64', ['sqlite3_session*']],
 				[
 					'sqlite3session_changeset_strm',
 					'int',
 					['sqlite3_session*', FPA({ name: 'xOutput', signature: 'i(ppp)', bindScope: 'transient' }), 'void*'],
 				],
-				['sqlite3session_config', 'int', ['int', 'void*']],
-				['sqlite3session_create', 'int', ['sqlite3*', 'string', '**']],
-
-				['sqlite3session_diff', 'int', ['sqlite3_session*', 'string', 'string', '**']],
-				['sqlite3session_enable', 'int', ['sqlite3_session*', 'int']],
-				['sqlite3session_indirect', 'int', ['sqlite3_session*', 'int']],
-				['sqlite3session_isempty', 'int', ['sqlite3_session*']],
-				['sqlite3session_memory_used', 'i64', ['sqlite3_session*']],
-				['sqlite3session_object_config', 'int', ['sqlite3_session*', 'int', 'void*']],
-				['sqlite3session_patchset', 'int', ['sqlite3_session*', '*', '**']],
 				['sqlite3session_patchset_strm', 'int', ['sqlite3_session*', FPA({ name: 'xOutput', signature: 'i(ppp)', bindScope: 'transient' }), 'void*']],
 				['sqlite3session_table_filter', undefined, ['sqlite3_session*', FPA({ name: 'xFilter', ...__ipsProxy, contextKey }), '*']],
 			]
@@ -275,22 +275,21 @@ export const installWhWasm = (sqlite3) => {
 	{
 		const __xArgPtr = xArg.get('*')
 		const nilType = function () {}
-		xArg.set('sqlite3_stmt*', (v) => __xArgPtr(v instanceof (sqlite3?.oo1?.Stmt || nilType) ? v.pointer : v))
 		xArg.set('sqlite3*', (v) => __xArgPtr(v instanceof (sqlite3?.oo1?.DB || nilType) ? v.pointer : v))
+		xArg.set('sqlite3_stmt*', (v) => __xArgPtr(v instanceof (sqlite3?.oo1?.Stmt || nilType) ? v.pointer : v))
 		xArg.set('sqlite3_vfs*', (v) => {
 			if ('string' === typeof v) return sqlite3_vfs_find(v) || sqliteError(C_API.SQLITE_NOTFOUND, `Unknown sqlite3_vfs name ${v}`)
 			return __xArgPtr(v instanceof structs.sqlite3_vfs ? v.pointer : v)
 		})
 
-		if (0 === asm.sqlite3_step.length) {
-			warn('Disabling sqlite3.wasm.xWrap.doArgcCheck due to environmental quirks.')
-		}
 		for (const e of wasm.bindingSignatures) {
 			capi[e[0]] = xWrap(...e)
 		}
+		/*
 		for (const e of wasm.bindingSignatures.int64) {
 			capi[e[0]] = xWrap(...e)
 		}
+		*/
 
 		delete wasm.bindingSignatures
 

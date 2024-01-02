@@ -3,7 +3,7 @@ import * as util from './util.js'
 import * as heap from './heap.js'
 import * as pstack from './pstack.js'
 import * as logger from './logger.js'
-import { xWrapASM } from './binding.js'
+import { __wrapASM } from './binding.js'
 
 export const sqlite3_randomness = (...args) => {
 	const asm = getASM()
@@ -117,7 +117,7 @@ export const sqlite3_reset_auto_extension = () => {
 	__autoExtFptr.clear()
 }
 
-const __db_err = xWrapASM('sqlite3_wasm_db_error', 'int', 'sqlite3*', 'int', 'string')
+const __db_err = __wrapASM('sqlite3_wasm_db_error', 'int', 'sqlite3*', 'int', 'string')
 
 export const sqlite3_wasm_db_error = (pDb, code, message) => {
 	if (code instanceof AllocError) {
@@ -130,9 +130,9 @@ export const sqlite3_wasm_db_error = (pDb, code, message) => {
 	return pDb ? __db_err(pDb, code, message) : code
 }
 
-const __config_s = xWrapASM('sqlite3_wasm_db_config_s', 'int', 'sqlite3*', 'int', 'string:static')
-const __config_pii = xWrapASM('sqlite3_wasm_db_config_pii', 'int', 'sqlite3*', 'int', '*', 'int', 'int')
-const __config_ip = xWrapASM('sqlite3_wasm_db_config_ip', 'int', 'sqlite3*', 'int', 'int', '*')
+const __config_s = __wrapASM('sqlite3_wasm_db_config_s', 'int', 'sqlite3*', 'int', 'string:static')
+const __config_pii = __wrapASM('sqlite3_wasm_db_config_pii', 'int', 'sqlite3*', 'int', '*', 'int', 'int')
+const __config_ip = __wrapASM('sqlite3_wasm_db_config_ip', 'int', 'sqlite3*', 'int', 'int', '*')
 
 export const sqlite3_db_config = (pDb, op, ...args) => {
 	switch (op) {

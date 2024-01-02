@@ -246,9 +246,7 @@ export const poke = (ptr, value, type = 'i8') => {
 }
 
 export const peekPtr = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, ptrIR)
-
 export const pokePtr = (ptr, value = 0) => poke(ptr, value, ptrIR)
-
 export const peek8 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i8')
 export const poke8 = (ptr, value) => poke(ptr, value, 'i8')
 export const peek16 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i16')

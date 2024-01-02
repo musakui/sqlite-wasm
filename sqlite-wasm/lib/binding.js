@@ -113,7 +113,6 @@ export const xResult = new Map([
 /** @param {Function} fn */
 const __argMismatch = (fn) => abort(`${fn.name || 'func'} requires ${fn.length} arg(s)`)
 
-
 /**
  * @param {unknown} resultType
  * @param {unknown[]} argTypes
@@ -172,7 +171,7 @@ const __wrapFunction = (func, resultType, argTypes) => {
  * @param {R} resultType return type
  * @param {P} argTypes parameter types
  */
-export const xWrapASM = (name, resultType, ...argTypes) => {
+export const __wrapASM = (name, resultType, ...argTypes) => {
 	checkArgs(resultType, argTypes)
 
 	let fn
@@ -282,29 +281,26 @@ export class BaseFuncPtrAdapter extends AbstractArgAdapter {
 
 /**
  * @template {Function} [T=Function]
- * @extends {AbstractArgAdapter<T>}
+ * @extends {BaseFuncPtrAdapter<T>}
  */
-export class ContextFuncPtrAdapter extends AbstractArgAdapter {
+export class ContextFuncPtrAdapter extends BaseFuncPtrAdapter {
 	/** @type {Function} */
 	contextKey = () => this
 
 	constructor(opts) {
 		super(opts)
-
 		if (util.isFunction(opts?.contextKey)) {
 			this.contextKey = opts.contextKey
 		}
-
 		this.installFunction = (v) => heap.__installFunction(v, signature, isTransient)
 	}
-
 }
 
 /**
  * @template {Function} [T=Function]
- * @extends {AbstractArgAdapter<T>}
+ * @extends {BaseFuncPtrAdapter<T>}
  */
-export class FuncPtrAdapter extends AbstractArgAdapter {
+export class FuncPtrAdapter extends BaseFuncPtrAdapter {
 	/** @type {Map<string, unknown[]>} */
 	#cmap = new Map()
 
@@ -324,15 +320,10 @@ export class FuncPtrAdapter extends AbstractArgAdapter {
 
 		if (bindScopes.indexOf(bindScope) < 0) abort(`Invalid bindScope`)
 
-		console.log(bindScope, !!opt.contextKey, this.name)
-
 		this.isContext = bindScope === BINDSCOPE_CONTEXT
-
-		const signature = opt.signature
 		const isTransient = bindScope === BINDSCOPE_TRANSIENT
-
 		this.singleton = bindScope === BINDSCOPE_SINGLETON ? [] : undefined
-		this.installFunction = (v) => heap.__installFunction(v, signature, isTransient)
+		this.installFunction = (v) => heap.__installFunction(v, this.signature, isTransient)
 	}
 
 	/** @param {string} key */
