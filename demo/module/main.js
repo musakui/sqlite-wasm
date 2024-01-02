@@ -1,5 +1,5 @@
-const runWorker = (url) => {
-	const worker = new Worker(url, { type: 'module' })
+/** @param {Worker} worker */
+const runWorker = (worker) => {
 	const started = Date.now()
 	worker.addEventListener('message', (evt) => {
 		const { error, message, body } = evt.data
@@ -16,11 +16,11 @@ const runWorker = (url) => {
 
 const app = document.querySelector('#app')
 app.innerHTML = 'updated library:\n\n'
-runWorker(new URL('./worker.js', import.meta.url))
+runWorker(new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }))
 
 const ori = document.querySelector('#ori')
 ori.onclick = () => {
 	ori.remove()
 	app.innerHTML = 'original library:\n\n'
-	runWorker(new URL('./originalWorker.js', import.meta.url))
+	runWorker(new Worker(new URL('./originalWorker.js', import.meta.url), { type: 'module' }))
 }

@@ -1,7 +1,6 @@
 import { DEBUG } from './constants.js'
 import { abort, NO_OP } from './util.js'
-
-const DEFAULT_WASM_SRC = '../jswasm/sqlite3.wasm'
+import DEFAULT_WASM_URL from '../jswasm/sqlite3.wasm?url'
 
 const NOT_INITIALIZED = 'not initialized'
 
@@ -42,7 +41,7 @@ let memory = null
  */
 const __load = async (source, memOpts) => {
 	if (!source) {
-		source = fetch(new URL(DEFAULT_WASM_SRC, import.meta.url))
+		source = fetch(DEFAULT_WASM_URL)
 	}
 
 	memory = new WebAssembly.Memory({
