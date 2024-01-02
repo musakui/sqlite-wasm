@@ -44,7 +44,7 @@ const capi_ori = Object.create(null)
 
 export const capi = DEBUG ? new Proxy(capi_ori, {
 	get (target, prop) {
-		console.log(prop)
+		console.log('capi accessed', prop)
 		return target[prop]
 	}
 }) : capi_ori

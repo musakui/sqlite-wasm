@@ -24,7 +24,7 @@ const others = [
 // prettier-ignore
 /** @param {string[]} a */
 const noops = (a) => Object.fromEntries(a.map((c) => [
-	c, DEBUG ? ((..._) => console.warn(`'${c}':`, _)) : NO_OP
+	c, DEBUG ? ((..._) => console.warn(`'${c}' called with:`, _)) : NO_OP
 ]))
 
 /** @type {Promise<void> | null} */
@@ -56,6 +56,7 @@ const __load = async (source, memOpts) => {
 			memory,
 			...noops(others),
 			...noops(syscall.map((c) => `__syscall_${c}`)),
+			// need to return the generic error code to work
 			__syscall_openat: () => -44,
 			emscripten_date_now: () => Date.now(),
 		},

@@ -1,4 +1,4 @@
-export const DEBUG = !!globalThis.DEBUG
+export const DEBUG = !!import.meta.env.DEV
 
 export const HAS_BIGINT = !!globalThis.BigInt
 

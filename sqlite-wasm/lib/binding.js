@@ -242,27 +242,10 @@ for (const t of Object.keys(shared)) {
  */
 export class AbstractArgAdapter {
 	/** @type {string} */
-	name = 'unnamed'
+	name
 
-	/** @type {Function | undefined} */
-	callProxy
-
-	/** @type {string} */
-	signature
-
-	/** @param {Record<string, unknown>} opts */
 	constructor(opts) {
-		if (typeof opts?.signature === 'string') {
-			this.signature = opts.signature
-		} else {
-			abort(`signature is required`)
-		}
-		if (typeof opts?.name === 'string') {
-			this.name = opts.name
-		}
-		if (util.isFunction(opts?.callProxy)) {
-			this.callProxy = opts.callProxy
-		}
+		this.name = opts?.name ?? 'unnamed'
 	}
 
 	/**
@@ -273,6 +256,27 @@ export class AbstractArgAdapter {
 	 */
 	convertArg(v, argv, idx) {
 		abort('should be subclassed')
+	}
+}
+
+export class BaseFuncPtrAdapter extends AbstractArgAdapter {
+	/** @type {Function | undefined} */
+	callProxy
+
+	/** @type {string} */
+	signature
+
+	constructor(opts) {
+		super(opts)
+		if (typeof opts?.signature === 'string') {
+			this.signature = opts.signature
+		} else {
+			abort(`signature is required`)
+		}
+
+		if (util.isFunction(opts?.callProxy)) {
+			this.callProxy = opts.callProxy
+		}
 	}
 }
 
