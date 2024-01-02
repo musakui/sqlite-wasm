@@ -5,6 +5,9 @@ import * as heap from './heap.js'
 import * as logger from './logger.js'
 import { xArg } from './binding.js'
 
+export const vfs = Object.create(null)
+export const vtab = Object.create(null)
+
 const mnames = [
 	'xCreate',
 	'xConnect',
@@ -32,9 +35,6 @@ const mnames = [
 ]
 
 export const installStruct = (sqlite3) => {
-	const vfs = Object.create(null),
-		vtab = Object.create(null)
-
 	sqlite3.vfs = vfs
 	sqlite3.vtab = vtab
 

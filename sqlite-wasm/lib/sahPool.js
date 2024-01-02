@@ -1,12 +1,13 @@
 import { sqliteError, C_API, structs } from './base.js'
 import { abort, isPtr, checkOPFS } from './util.js'
+import { vfs } from './struct.js'
 import * as capi from './capi.js'
 import * as heap from './heap.js'
 import * as logger from './logger.js'
 
 let thePool = null
-
 let poolUtil = null
+let struct
 
 const SECTOR_SIZE = 4096
 const HEADER_MAX_PATH_SIZE = 512
@@ -177,108 +178,107 @@ const ioMethods = {
 	},
 }
 
+const vfsMethods = {
+	xAccess: function (pVfs, zName, flags, pOut) {
+		const pool = getPoolForVfs(pVfs)
+		pool.storeErr()
+		try {
+			const name = pool.getPath(zName)
+			heap.poke32(pOut, pool.hasFilename(name) ? 1 : 0)
+		} catch (e) {
+			heap.poke32(pOut, 0)
+		}
+		return 0
+	},
+	xCurrentTime: function (pVfs, pOut) {
+		heap.poke(pOut, 2440587.5 + new Date().getTime() / 86400000, 'double')
+		return 0
+	},
+	xCurrentTimeInt64: function (pVfs, pOut) {
+		heap.poke(pOut, 2440587.5 * 86400000 + new Date().getTime(), 'i64')
+		return 0
+	},
+	xDelete: function (pVfs, zName, doSyncDir) {
+		const pool = getPoolForVfs(pVfs)
+		pool.log(`xDelete ${heap.cstrToJs(zName)}`)
+		pool.storeErr()
+		try {
+			pool.deletePath(pool.getPath(zName))
+			return 0
+		} catch (e) {
+			pool.storeErr(e)
+			return C_API.SQLITE_IOERR_DELETE
+		}
+	},
+	xFullPathname: function (pVfs, zName, nOut, pOut) {
+		const i = heap.cstrncpy(pOut, zName, nOut)
+		return i < nOut ? 0 : C_API.SQLITE_CANTOPEN
+	},
+	xGetLastError: function (pVfs, nOut, pOut) {
+		const pool = getPoolForVfs(pVfs)
+		const e = pool.popErr()
+		pool.log(`xGetLastError ${nOut} e =`, e)
+		if (e) {
+			const scope = heap.scopedAllocPush()
+			try {
+				const [cMsg, n] = heap.scopedAllocCStringWithLength(e.message)
+				heap.cstrncpy(pOut, cMsg, nOut)
+				if (n > nOut) heap.poke8(pOut + nOut - 1, 0)
+			} catch (e) {
+				return C_API.SQLITE_NOMEM
+			} finally {
+				heap.scopedAllocPop(scope)
+			}
+		}
+		return e ? e.sqlite3Rc || C_API.SQLITE_IOERR : 0
+	},
+	xOpen: function f(pVfs, zName, pFile, flags, pOutFlags) {
+		const pool = getPoolForVfs(pVfs)
+		try {
+			pool.log(`xOpen ${heap.cstrToJs(zName)} ${flags}`)
+
+			const path = zName && heap.peek8(zName) ? pool.getPath(zName) : getRandomName()
+			let sah = pool.getSAHForPath(path)
+			if (!sah && flags & C_API.SQLITE_OPEN_CREATE) {
+				if (pool.getFileCount() < pool.getCapacity()) {
+					sah = pool.nextAvailableSAH()
+					pool.setAssociatedPath(sah, path, flags)
+				} else {
+					abort(`SAH pool is full. Cannot create file ${path}`)
+				}
+			}
+			if (!sah) {
+				abort(`file not found: ${path}`)
+			}
+
+			const file = { path, flags, sah }
+			pool.mapS3FileToOFile(pFile, file)
+			file.lockType = C_API.SQLITE_LOCK_NONE
+			const sq3File = new structs.sqlite3_file(pFile)
+			sq3File.$pMethods = struct.pointer
+			sq3File.dispose()
+			heap.poke32(pOutFlags, flags)
+			return 0
+		} catch (e) {
+			pool.storeErr(e)
+			return C_API.SQLITE_CANTOPEN
+		}
+	},
+}
+
+const initPromises = Object.create(null)
+
+const optionDefaults = Object.assign(Object.create(null), {
+	name: 'opfs-sahpool',
+	directory: undefined,
+	initialCapacity: 6,
+	clearOnInit: false,
+	verbosity: 2,
+})
+
 export const installSAHPool = (sqlite3) => {
-	const initPromises = Object.create(null)
-
-	const optionDefaults = Object.assign(Object.create(null), {
-		name: 'opfs-sahpool',
-		directory: undefined,
-		initialCapacity: 6,
-		clearOnInit: false,
-		verbosity: 2,
-	})
-
-	const struct = new structs.sqlite3_io_methods()
-	sqlite3.vfs.installVfs({ io: { struct, methods: ioMethods } })
-
-	const vfsMethods = {
-		xAccess: function (pVfs, zName, flags, pOut) {
-			const pool = getPoolForVfs(pVfs)
-			pool.storeErr()
-			try {
-				const name = pool.getPath(zName)
-				heap.poke32(pOut, pool.hasFilename(name) ? 1 : 0)
-			} catch (e) {
-				heap.poke32(pOut, 0)
-			}
-			return 0
-		},
-		xCurrentTime: function (pVfs, pOut) {
-			heap.poke(pOut, 2440587.5 + new Date().getTime() / 86400000, 'double')
-			return 0
-		},
-		xCurrentTimeInt64: function (pVfs, pOut) {
-			heap.poke(pOut, 2440587.5 * 86400000 + new Date().getTime(), 'i64')
-			return 0
-		},
-		xDelete: function (pVfs, zName, doSyncDir) {
-			const pool = getPoolForVfs(pVfs)
-			pool.log(`xDelete ${heap.cstrToJs(zName)}`)
-			pool.storeErr()
-			try {
-				pool.deletePath(pool.getPath(zName))
-				return 0
-			} catch (e) {
-				pool.storeErr(e)
-				return C_API.SQLITE_IOERR_DELETE
-			}
-		},
-		xFullPathname: function (pVfs, zName, nOut, pOut) {
-			const i = heap.cstrncpy(pOut, zName, nOut)
-			return i < nOut ? 0 : C_API.SQLITE_CANTOPEN
-		},
-		xGetLastError: function (pVfs, nOut, pOut) {
-			const pool = getPoolForVfs(pVfs)
-			const e = pool.popErr()
-			pool.log(`xGetLastError ${nOut} e =`, e)
-			if (e) {
-				const scope = heap.scopedAllocPush()
-				try {
-					const [cMsg, n] = heap.scopedAllocCStringWithLength(e.message)
-					heap.cstrncpy(pOut, cMsg, nOut)
-					if (n > nOut) heap.poke8(pOut + nOut - 1, 0)
-				} catch (e) {
-					return C_API.SQLITE_NOMEM
-				} finally {
-					heap.scopedAllocPop(scope)
-				}
-			}
-			return e ? e.sqlite3Rc || C_API.SQLITE_IOERR : 0
-		},
-
-		xOpen: function f(pVfs, zName, pFile, flags, pOutFlags) {
-			const pool = getPoolForVfs(pVfs)
-			try {
-				pool.log(`xOpen ${heap.cstrToJs(zName)} ${flags}`)
-
-				const path = zName && heap.peek8(zName) ? pool.getPath(zName) : getRandomName()
-				let sah = pool.getSAHForPath(path)
-				if (!sah && flags & C_API.SQLITE_OPEN_CREATE) {
-					if (pool.getFileCount() < pool.getCapacity()) {
-						sah = pool.nextAvailableSAH()
-						pool.setAssociatedPath(sah, path, flags)
-					} else {
-						abort(`SAH pool is full. Cannot create file ${path}`)
-					}
-				}
-				if (!sah) {
-					abort(`file not found: ${path}`)
-				}
-
-				const file = { path, flags, sah }
-				pool.mapS3FileToOFile(pFile, file)
-				file.lockType = C_API.SQLITE_LOCK_NONE
-				const sq3File = new structs.sqlite3_file(pFile)
-				sq3File.$pMethods = struct.pointer
-				sq3File.dispose()
-				heap.poke32(pOutFlags, flags)
-				return 0
-			} catch (e) {
-				pool.storeErr(e)
-				return C_API.SQLITE_CANTOPEN
-			}
-		},
-	}
+	struct = new structs.sqlite3_io_methods()
+	vfs.installVfs({ io: { struct, methods: ioMethods } })
 
 	const createOpfsVfs = function (vfsName) {
 		if (capi.sqlite3_vfs_find(vfsName)) {
@@ -309,9 +309,7 @@ export const installSAHPool = (sqlite3) => {
 		if (!opfsVfs.$xSleep && !vfsMethods.xSleep) {
 			vfsMethods.xSleep = (pVfs, ms) => 0
 		}
-		sqlite3.vfs.installVfs({
-			vfs: { struct: opfsVfs, methods: vfsMethods },
-		})
+		vfs.installVfs({ vfs: { struct: opfsVfs, methods: vfsMethods } })
 		return opfsVfs
 	}
 
@@ -382,23 +380,6 @@ export const installSAHPool = (sqlite3) => {
 				this.setAssociatedPath(ah, '', 0)
 			}
 			return this.getCapacity()
-		}
-
-		async reduceCapacity(n) {
-			let nRm = 0
-			for (const ah of Array.from(this.#availableSAH)) {
-				if (nRm === n || this.getFileCount() === this.getCapacity()) {
-					break
-				}
-				const name = this.#mapSAHToName.get(ah)
-
-				ah.close()
-				await this.#dhOpaque.removeEntry(name)
-				this.#mapSAHToName.delete(ah)
-				this.#availableSAH.delete(ah)
-				++nRm
-			}
-			return nRm
 		}
 
 		releaseAccessHandles() {
@@ -687,10 +668,6 @@ class OpfsSAHPoolUtil {
 		return this.#p.addCapacity(n)
 	}
 
-	async reduceCapacity(n) {
-		return this.#p.reduceCapacity(n)
-	}
-
 	getCapacity() {
 		return this.#p.getCapacity(this.#p)
 	}
@@ -698,13 +675,9 @@ class OpfsSAHPoolUtil {
 	getFileCount() {
 		return this.#p.getFileCount()
 	}
+
 	getFileNames() {
 		return this.#p.getFileNames()
-	}
-
-	async reserveMinimumCapacity(min) {
-		const c = this.#p.getCapacity()
-		return c < min ? this.#p.addCapacity(min - c) : c
 	}
 
 	exportFile(name) {
@@ -713,14 +686,6 @@ class OpfsSAHPoolUtil {
 
 	importDb(name, bytes) {
 		return this.#p.importDb(name, bytes)
-	}
-
-	async wipeFiles() {
-		return this.#p.reset(true)
-	}
-
-	unlink(filename) {
-		return this.#p.deletePath(filename)
 	}
 
 	async removeVfs() {
