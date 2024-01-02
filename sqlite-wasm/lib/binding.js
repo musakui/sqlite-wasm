@@ -241,8 +241,28 @@ for (const t of Object.keys(shared)) {
  * @template {unknown} [T=unknown]
  */
 export class AbstractArgAdapter {
-	constructor(opt) {
-		this.name = opt?.name ?? 'unnamed adapter'
+	/** @type {string} */
+	name = 'unnamed'
+
+	/** @type {Function | undefined} */
+	callProxy
+
+	/** @type {string} */
+	signature
+
+	/** @param {Record<string, unknown>} opts */
+	constructor(opts) {
+		if (typeof opts?.signature === 'string') {
+			this.signature = opts.signature
+		} else {
+			abort(`signature is required`)
+		}
+		if (typeof opts?.name === 'string') {
+			this.name = opts.name
+		}
+		if (util.isFunction(opts?.callProxy)) {
+			this.callProxy = opts.callProxy
+		}
 	}
 
 	/**
@@ -254,6 +274,26 @@ export class AbstractArgAdapter {
 	convertArg(v, argv, idx) {
 		abort('should be subclassed')
 	}
+}
+
+/**
+ * @template {Function} [T=Function]
+ * @extends {AbstractArgAdapter<T>}
+ */
+export class ContextFuncPtrAdapter extends AbstractArgAdapter {
+	/** @type {Function} */
+	contextKey = () => this
+
+	constructor(opts) {
+		super(opts)
+
+		if (util.isFunction(opts?.contextKey)) {
+			this.contextKey = opts.contextKey
+		}
+
+		this.installFunction = (v) => heap.__installFunction(v, signature, isTransient)
+	}
+
 }
 
 /**
@@ -280,13 +320,14 @@ export class FuncPtrAdapter extends AbstractArgAdapter {
 
 		if (bindScopes.indexOf(bindScope) < 0) abort(`Invalid bindScope`)
 
+		console.log(bindScope, !!opt.contextKey, this.name)
+
 		this.isContext = bindScope === BINDSCOPE_CONTEXT
 
 		const signature = opt.signature
 		const isTransient = bindScope === BINDSCOPE_TRANSIENT
 
 		this.singleton = bindScope === BINDSCOPE_SINGLETON ? [] : undefined
-		this.callProxy = opt.callProxy instanceof Function ? opt.callProxy : undefined
 		this.installFunction = (v) => heap.__installFunction(v, signature, isTransient)
 	}
 
