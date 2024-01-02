@@ -1,3 +1,4 @@
+import { DEBUG } from './constants.js'
 import { getASM, getMemory } from './instance.js'
 import { abort, isPtr, typedArrayToString } from './util.js'
 
@@ -39,10 +40,9 @@ export let StructBinder = null
 
 export const wasm = Object.create(null)
 
-const DEBUG_CAPI = 0
 const capi_ori = Object.create(null)
 
-export const capi = DEBUG_CAPI ? new Proxy(capi_ori, {
+export const capi = DEBUG ? new Proxy(capi_ori, {
 	get (target, prop) {
 		console.log(prop)
 		return target[prop]
@@ -115,7 +115,7 @@ export const setup = () => {
 	asm.__wasm_call_ctors()
 
 	const cjStr = asm.sqlite3_wasm_enum_json()
-	if (!cjStr) abort(MAINTANENCE_REQUIRED)
+	if (!cjStr) abort(DEBUG ? MAINTANENCE_REQUIRED : 'enum loading failed')
 
 	StructBinder = Jaccwabyt({
 		heap,

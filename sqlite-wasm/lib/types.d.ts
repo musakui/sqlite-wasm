@@ -1,8 +1,15 @@
+import { structs } from './base'
 import type { AbstractArgAdapter } from './binding'
+import type { BaseDB, Stmt } from './oo2'
 
 declare const pointerTag: unique symbol
 
 export type WasmPointer<T = unknown> = number & { readonly [pointerTag]: T }
+
+export type DBPointer = WasmPointer<BaseDB>
+export type StmtPointer = WasmPointer<Stmt>
+
+export type VFSPointer = WasmPointer<typeof structs.sqlite3_vfs>
 
 export type SQLValue = string | number | null | BigInt | Uint8Array | Int8Array | ArrayBuffer
 
@@ -23,8 +30,8 @@ interface SharedTypeMap {
 	float: number
 	double: number
 	null: null
-	'*': WasmPointer
-	'void*': WasmPointer<'void'>
+	'*': WasmPointer<ArrayLike<unknown>>
+	'void*': WasmPointer
 	'sqlite3_value*': WasmPointer<'value'>
 }
 
@@ -34,21 +41,21 @@ export interface ResultTypeMap extends SharedTypeMap {
 	string: string
 	number: number
 	pointer: WasmPointer
-	'sqlite3*': WasmPointer<'db'>
-	'sqlite3_vfs*': WasmPointer<'vfs'>
+	'sqlite3*': DBPointer
+	'sqlite3_vfs*': VFSPointer
 }
 
 export interface ArgTypeMap extends SharedTypeMap {
-	'**': WasmPointer<'*'>
+	'**': WasmPointer<WasmPointer>
 	utf8: number
 	string: number
 	pointer: number
 	sqlite3_filename: number
 	'string:static': string
 	'string:flexible': number
-	'sqlite3*': WasmPointer<'db'>
-	'sqlite3_vfs*': WasmPointer<'vfs'>
-	'sqlite3_stmt*': WasmPointer<'stmt'>
+	'sqlite3*': DBPointer
+	'sqlite3_vfs*': VFSPointer
+	'sqlite3_stmt*': StmtPointer
 	'sqlite3_module*': WasmPointer<'module'>
 	'sqlite3_session*': WasmPointer<'session'>
 	'sqlite3_context*': WasmPointer<'context'>

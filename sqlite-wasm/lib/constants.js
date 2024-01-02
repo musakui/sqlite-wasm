@@ -1,3 +1,5 @@
+export const DEBUG = !!globalThis.DEBUG
+
 export const HAS_BIGINT = !!globalThis.BigInt
 
 export const ptrSizeof = 4

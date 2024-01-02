@@ -4,8 +4,8 @@ import * as capi from './capi.js'
 import * as pstack from './pstack.js'
 import { sqlite3_wasm_db_vfs } from './wasm.js'
 
-/** @typedef {import('./types').WasmPointer<'db'>} DBPointer */
-/** @typedef {import('./types').WasmPointer<'stmt'>} StmtPointer */
+/** @typedef {import('./types').DBPointer} DBPointer */
+/** @typedef {import('./types').StmtPointer} StmtPointer */
 
 /** @type {WeakMap<DB | Stmt, DBPointer | StmtPointer>} */
 const __ptrMap = new WeakMap()
@@ -34,7 +34,14 @@ const affirmNotLocked = (s, op = 'op') => {
 	return affirmStmtOpen(s)
 }
 
-export class DB {
+export class BaseDB {
+	/** @return {DBPointer} */
+	get pointer() {
+		return __ptrMap.get(this)
+	}
+}
+
+export class DB extends BaseDB {
 	constructor(flags = 0, vfs = null) {
 		/** @type {DBPointer} */
 		let pDb
@@ -62,11 +69,6 @@ export class DB {
 		}
 		__ptrMap.set(this, pDb)
 		__stmtMap.set(this, new Map())
-	}
-
-	/** @return {DBPointer} */
-	get pointer() {
-		return __ptrMap.get(this)
 	}
 
 	close() {
