@@ -90,11 +90,6 @@ const ioMethods = {
 	xLock: setLock,
 	xUnlock: setLock,
 	xCheckReservedLock: (pFile, pOut) => {
-		/*
-		const pool = getPoolForPFile(pFile)
-		pool.log('xCheckReservedLock')
-		pool.storeErr()
-		*/
 		heap.poke32(pOut, 1)
 		return 0
 	},

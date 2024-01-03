@@ -176,88 +176,108 @@ export const cstrncpy = (tgtPtr, srcPtr, n) => {
 	return i
 }
 
-export const peek = (ptr, type = 'i8') => {
+/**
+ * @param {number} ptr
+ */
+const peek1 = (ptr, type = 'i8') => {
 	if (type.endsWith('*')) type = ptrIR
-	const list = Array.isArray(ptr) ? [] : undefined
-	let rc
-	do {
-		if (list) ptr = arguments[0].shift()
-		switch (type) {
-			case 'i1':
-			case 'i8':
-				rc = heap8()[ptr >> 0]
-				break
-			case 'i16':
-				rc = heap16()[ptr >> 1]
-				break
-			case 'i32':
-				rc = heap32()[ptr >> 2]
-				break
-			case 'float':
-			case 'f32':
-				rc = heap32f()[ptr >> 2]
-				break
-			case 'double':
-			case 'f64':
-				rc = Number(heap64f()[ptr >> 3])
-				break
-			case 'i64':
-				rc = heap64()[ptr >> 3]
-				break
-			default:
-				abort(`Invalid type for peek(): ${type}`)
-		}
-		if (list) list.push(rc)
-	} while (list && arguments[0].length)
-	return list || rc
+	switch (type) {
+		case 'i1':
+		case 'i8':
+			return heap8()[ptr >> 0]
+		case 'i16':
+			return heap16()[ptr >> 1]
+		case 'i32':
+			return heap32()[ptr >> 2]
+		case 'float':
+		case 'f32':
+			return heap32f()[ptr >> 2]
+		case 'double':
+		case 'f64':
+			return Number(heap64f()[ptr >> 3])
+		case 'i64':
+			return heap64()[ptr >> 3]
+		default:
+			break
+	}
+	return abort(`Invalid type for peek(): ${type}`)
 }
 
+/**
+ * @param {number} ptr
+ */
+export const peek = (ptr, type = 'i8') => peek1(ptr, type)
+
+/**
+ * @param {number[]} ptrs
+ */
+export const peekMany = (ptrs, type = 'i8') => ptrs.map((p) => peek1(p, type))
+
+/**
+ * @param {number | number[]} ptr
+ * @param {number} value
+ */
 export const poke = (ptr, value, type = 'i8') => {
 	if (type.endsWith('*')) type = ptrIR
+	let step = 0
+	let hp
+	switch (type) {
+		case 'i1':
+		case 'i8':
+			hp = heap8()
+			break
+		case 'i16':
+			hp = heap16()
+			step = 1
+			break
+		case 'i32':
+			hp = heap32()
+			step = 2
+			break
+		case 'float':
+		case 'f32':
+			hp = heap32f()
+			step = 2
+			break
+		case 'double':
+		case 'f64':
+			hp = heap64f()
+			step = 3
+			break
+		case 'i64':
+			if (HAS_BIGINT) {
+				hp = heap64()
+				step = 3
+				value = BigInt(value)
+				break
+			}
+		default:
+			break
+	}
+	if (!hp) return abort(`Invalid type for poke: ${type}`)
 	for (const p of Array.isArray(ptr) ? ptr : [ptr]) {
-		switch (type) {
-			case 'i1':
-			case 'i8':
-				heap8()[p >> 0] = value
-				continue
-			case 'i16':
-				heap16()[p >> 1] = value
-				continue
-			case 'i32':
-				heap32()[p >> 2] = value
-				continue
-			case 'float':
-			case 'f32':
-				heap32f()[p >> 2] = value
-				continue
-			case 'double':
-			case 'f64':
-				heap64f()[p >> 3] = value
-				continue
-			case 'i64':
-				if (HAS_BIGINT) {
-					heap64()[p >> 3] = BigInt(value)
-					continue
-				}
-			default:
-				abort(`Invalid type for poke(): ${type}`)
-		}
+		hp[p >> step] = value
 	}
 }
 
-export const peekPtr = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, ptrIR)
+/** @param {number} ptr */
+export const peekPtr = (ptr) => peek1(ptr, ptrIR)
+
+/** @param {number} ptr */
 export const pokePtr = (ptr, value = 0) => poke(ptr, value, ptrIR)
-export const peek8 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i8')
-export const poke8 = (ptr, value) => poke(ptr, value, 'i8')
+
+export const peek8 = peek1
 export const peek16 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i16')
-export const poke16 = (ptr, value) => poke(ptr, value, 'i16')
 export const peek32 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i32')
-export const poke32 = (ptr, value) => poke(ptr, value, 'i32')
 export const peek64 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i64')
-export const poke64 = (ptr, value) => poke(ptr, value, 'i64')
 export const peek32f = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'f32')
-export const poke32f = (ptr, value) => poke(ptr, value, 'f32')
 export const peek64f = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'f64')
+
+export const poke8 = (ptr, value) => poke(ptr, value, 'i8')
+export const poke16 = (ptr, value) => poke(ptr, value, 'i16')
+export const poke32 = (ptr, value) => poke(ptr, value, 'i32')
+export const poke64 = (ptr, value) => poke(ptr, value, 'i64')
+export const poke32f = (ptr, value) => poke(ptr, value, 'f32')
 
 const rxJSig = /^(\w)\((\w*)\)$/
 const typeCodes = { f64: 0x7c, f32: 0x7d, i64: 0x7e, i32: 0x7f }

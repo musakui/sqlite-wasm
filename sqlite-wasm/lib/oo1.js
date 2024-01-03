@@ -290,7 +290,7 @@ export const installOO1 = (sqlite3) => {
 				capi.sqlite3_trace_v2(pDb, C_API.SQLITE_TRACE_STMT, __dbTraceToConsole, pDb)
 			}
 		} catch (e) {
-			if (pDb) capi.sqlite3_close_v2(pDb)
+			if (pDb) capi_m.sqlite3_close_v2_raw(pDb)
 			throw e
 		} finally {
 			pstack.restore(stack)
@@ -367,7 +367,7 @@ export const installOO1 = (sqlite3) => {
 				})
 				__ptrMap.delete(this)
 				__stmtMap.delete(this)
-				capi.sqlite3_close_v2(pDb)
+				capi_m.sqlite3_close_v2_raw(pDb)
 				if (this.onclose && this.onclose.after instanceof Function) {
 					try {
 						this.onclose.after(this)

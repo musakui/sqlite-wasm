@@ -78,6 +78,7 @@ export const runDemo = (db, utils) => {
 	})
 	log('got row', JSON.stringify(row))
 
+	// db.close()
 	log(`end`)
 }
 
