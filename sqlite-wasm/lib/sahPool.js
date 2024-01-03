@@ -41,6 +41,21 @@ const setPoolForPFile = (pFile, pool) => {
 	else __mapSqlite3File.delete(pFile)
 }
 
+/** @type {Map<FileSystemSyncAccessHandle , number>} */
+const handleMap = new Map()
+
+/** @type {Map<number, number>} */
+const lockTypeMap = new Map()
+
+/**
+ * @param {number} pFile
+ * @param {number} lockType
+ */
+const setLock = (pFile, lockType) => {
+	lockTypeMap.set(pFile, lockType)
+	return 0
+}
+
 export const initPool = async (sqlite3, pool) => {
 	await checkOPFS()
 	thePool = new pool({})
@@ -72,10 +87,14 @@ const ioMethods = {
 	xSectorSize: () => SECTOR_SIZE,
 	xFileControl: () => C_API.SQLITE_NOTFOUND,
 	xDeviceCharacteristics: () => C_API.SQLITE_IOCAP_UNDELETABLE_WHEN_OPEN,
+	xLock: setLock,
+	xUnlock: setLock,
 	xCheckReservedLock: (pFile, pOut) => {
+		/*
 		const pool = getPoolForPFile(pFile)
 		pool.log('xCheckReservedLock')
 		pool.storeErr()
+		*/
 		heap.poke32(pOut, 1)
 		return 0
 	},
@@ -84,6 +103,7 @@ const ioMethods = {
 		pool.storeErr()
 		const file = pool.getOFileForS3File(pFile)
 		if (file) {
+			lockTypeMap.delete(pFile)
 			try {
 				pool.log(`xClose ${file.path}`)
 				pool.mapS3FileToOFile(pFile, false)
@@ -103,14 +123,6 @@ const ioMethods = {
 		const file = pool.getOFileForS3File(pFile)
 		const size = file.sah.getSize() - HEADER_OFFSET_DATA
 		heap.poke64(pSz64, BigInt(size))
-		return 0
-	},
-	xLock: (pFile, lockType) => {
-		const pool = getPoolForPFile(pFile)
-		pool.log(`xLock ${lockType}`)
-		pool.storeErr()
-		const file = pool.getOFileForS3File(pFile)
-		file.lockType = lockType
 		return 0
 	},
 	xRead: (pFile, pDest, n, offset64) => {
@@ -155,13 +167,6 @@ const ioMethods = {
 		} catch (e) {
 			return pool.storeErr(e, C_API.SQLITE_IOERR)
 		}
-	},
-	xUnlock: (pFile, lockType) => {
-		const pool = getPoolForPFile(pFile)
-		pool.log('xUnlock')
-		const file = pool.getOFileForS3File(pFile)
-		file.lockType = lockType
-		return 0
 	},
 	xWrite: (pFile, pSrc, n, offset64) => {
 		const pool = getPoolForPFile(pFile)
@@ -253,7 +258,7 @@ const vfsMethods = {
 
 			const file = { path, flags, sah }
 			pool.mapS3FileToOFile(pFile, file)
-			file.lockType = C_API.SQLITE_LOCK_NONE
+			setLock(pFile, C_API.SQLITE_LOCK_NONE)
 			const sq3File = new structs.sqlite3_file(pFile)
 			sq3File.$pMethods = struct.pointer
 			sq3File.dispose()
@@ -348,7 +353,9 @@ export const installSAHPool = (sqlite3) => {
 			})
 		}
 
-		log(...args) {}
+		log(...args) {
+			console.log(...args)
+		}
 
 		getVfs() {
 			return this.#cVfs

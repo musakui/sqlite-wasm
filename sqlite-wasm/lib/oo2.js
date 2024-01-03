@@ -7,12 +7,6 @@ import { sqlite3_wasm_db_vfs } from './wasm.js'
 /** @typedef {import('./types').DBPointer} DBPointer */
 /** @typedef {import('./types').StmtPointer} StmtPointer */
 
-/** @type {WeakMap<DB | Stmt, DBPointer | StmtPointer>} */
-const __ptrMap = new WeakMap()
-
-/** @type {WeakMap<DB, Map<StmtPointer, Stmt>>} */
-const __stmtMap = new WeakMap()
-
 /**
  * @param {number} rc
  * @param {DBPointer} pDb
@@ -34,55 +28,53 @@ const affirmNotLocked = (s, op = 'op') => {
 	return affirmStmtOpen(s)
 }
 
-export class BaseDB {
-	/** @return {DBPointer} */
-	get pointer() {
-		return __ptrMap.get(this)
+export const openDb = (flags = 0, vfs = null) => {
+	/** @type {DBPointer} */
+	let pDb
+	const oflags = flags || C_API.SQLITE_OPEN_READONLY
+	const stack = pstack.getPtr()
+	try {
+		const pPtr = pstack.allocPtr()
+		let rc = capi.sqlite3_open_v2(fn, pPtr, oflags, vfs || 0)
+		pDb = heap.peekPtr(pPtr)
+		checkRc(rc, pDb)
+		capi.sqlite3_extended_result_codes(pDb, 1)
+	} catch (e) {
+		if (pDb) capi.sqlite3_close_v2_raw(pDb)
+		throw e
+	} finally {
+		pstack.restore(stack)
 	}
+	try {
+		const pVfs = sqlite3_wasm_db_vfs(pDb, 0)
+		if (!pVfs) sqliteError('cannot get VFS for new db')
+	} catch (e) {
+		capi.sqlite3_close_v2_raw(pDb)
+		throw e
+	}
+	return pDb
 }
 
-export class DB extends BaseDB {
-	constructor(flags = 0, vfs = null) {
-		/** @type {DBPointer} */
-		let pDb
+export class DB {
+	/** @type {DBPointer | null} */
+	#ptr = null
 
-		const oflags = flags || C_API.SQLITE_OPEN_READONLY
-		const stack = pstack.getPtr()
-		try {
-			const pPtr = pstack.allocPtr()
-			let rc = capi.sqlite3_open_v2(fn, pPtr, oflags, vfs || 0)
-			pDb = heap.peekPtr(pPtr)
-			checkRc(rc, pDb)
-			capi.sqlite3_extended_result_codes(pDb, 1)
-		} catch (e) {
-			if (pDb) capi.sqlite3_close_v2_raw(pDb)
-			throw e
-		} finally {
-			pstack.restore(stack)
-		}
-		try {
-			const pVfs = sqlite3_wasm_db_vfs(pDb, 0)
-			if (!pVfs) sqliteError('cannot get VFS for new db')
-		} catch (e) {
-			this.close()
-			throw e
-		}
-		__ptrMap.set(this, pDb)
-		__stmtMap.set(this, new Map())
+	/**
+	 * @param {DBPointer} ptr
+	 */
+	constructor(ptr) {
+		this.#ptr = ptr
+	}
+
+	get pointer() {
+		return this.#ptr
 	}
 
 	close() {
 		const pDb = this.pointer
 		if (!pDb) return
-		for (const s of __stmtMap.get(this).values()) {
-			if (!s?.pointer) continue
-			try {
-				s.finalize()
-			} catch (err) {}
-		}
-		__ptrMap.delete(this)
-		__stmtMap.delete(this)
 		capi.sqlite3_close_v2_raw(pDb)
+		this.#ptr = null
 	}
 }
 
@@ -90,23 +82,24 @@ export class Stmt {
 	/** @type {DB} */
 	#db
 
+	/** @type {StmtPointer | null} */
+	#ptr = null
+
 	#mayGet = false
 
 	#locked = false
 
 	/**
 	 * @param {DB} db
-	 * @param {StmtPointer} pSt
+	 * @param {StmtPointer} ptr
 	 */
-	constructor(db, pSt) {
+	constructor(db, ptr) {
 		this.#db = db
-		__ptrMap.set(this, pSt)
-		__stmtMap.get(db)?.set(pSt, this)
+		this.#ptr = ptr
 	}
 
-	/** @return {StmtPointer} */
 	get pointer() {
-		return __ptrMap.get(this)
+		return this.#ptr
 	}
 
 	get locked() {
@@ -122,7 +115,7 @@ export class Stmt {
 	 * @param {(pSt: StmtPointer, pDb: DBPointer) => T} cb
 	 */
 	*runSteps(cb) {
-		const pSt = affirmNotLocked(this, 'runSteps')
+		const pSt = affirmNotLocked(this)
 		while (this.step()) {
 			this.#locked = true
 			yield cb(pSt, this.#db.pointer)
@@ -157,16 +150,13 @@ export class Stmt {
 		const pSt = affirmNotLocked(this, 'reset')
 		if (alsoClearBinds) this.clearBindings()
 		this.#mayGet = false
-		const rc = capi.sqlite3_reset(pSt)
-		checkRc(rc, this.#db.pointer)
+		checkRc(capi.sqlite3_reset(pSt), this.#db.pointer)
 		return this
 	}
 
 	finalize() {
-		const pSt = affirmNotLocked(this, 'finalize')
-		const rc = capi.sqlite3_finalize(pSt)
-		__stmtMap.get(this.#db).delete(pSt)
-		__ptrMap.delete(this)
+		const rc = capi.sqlite3_finalize(affirmNotLocked(this, 'finalize'))
+		this.#ptr = null
 		return rc
 	}
 }
