@@ -1,6 +1,5 @@
 import { DEBUG } from './constants.js'
 import { abort, NO_OP } from './util.js'
-import DEFAULT_WASM_URL from '../jswasm/sqlite3.wasm?url'
 
 const NOT_INITIALIZED = 'not initialized'
 
@@ -36,21 +35,17 @@ let instance = null
 let memory = null
 
 /**
- * @param {Response | PromiseLike<Response>} [source]
+ * @param {Response | PromiseLike<Response>} resp
  * @param {WebAssembly.MemoryDescriptor} [memOpts]
  */
-const __load = async (source, memOpts) => {
-	if (!source) {
-		source = fetch(DEFAULT_WASM_URL)
-	}
-
+const __load = async (resp, memOpts) => {
 	memory = new WebAssembly.Memory({
 		initial: 256,
 		maximum: 32768,
 		...memOpts,
 	})
 
-	const src = await WebAssembly.instantiateStreaming(source, {
+	const src = await WebAssembly.instantiateStreaming(resp, {
 		env: {
 			memory,
 			...noops(others),
@@ -79,12 +74,13 @@ export const getASM = () => instance?.exports ?? abort(NOT_INITIALIZED)
  * Only needs to be called once;
  * options provided to subsequent invocations will be ignored
  *
- * @param {Response | PromiseLike<Response>} [source] response from fetch
- * @param {WebAssembly.MemoryDescriptor} [memoryOptions] options for the Memory
+ * @param {string | URL | Response | PromiseLike<Response>} source source for the WASM binary
+ * @param {WebAssembly.MemoryDescriptor} [memoryOptions] options for the Memory instance
  */
 export const load = async (source, memoryOptions) => {
 	if (!initPromise) {
-		initPromise = __load(source, memoryOptions)
+		const r = typeof source === 'string' || source instanceof URL ? fetch(source) : source
+		initPromise = __load(r, memoryOptions)
 	}
 	return await initPromise
 }
