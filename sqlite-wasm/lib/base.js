@@ -39,7 +39,7 @@ export let StructBinder = null
 
 export const wasm = Object.create(null)
 
-const DEBUG_CAPI = !!import.meta.env.DEBUG_CAPI
+const DEBUG_CAPI = !!import.meta?.env?.DEBUG_CAPI
 
 const capi_ori = Object.create(null)
 

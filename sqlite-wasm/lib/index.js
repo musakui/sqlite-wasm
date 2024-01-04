@@ -18,6 +18,6 @@ export async function init() {
 	const sqlite3 = {}
 	installOO1(sqlite3)
 	installStruct(sqlite3)
-	installSAHPool(sqlite3)
+	await installSAHPool(sqlite3)
 	return sqlite3
 }
