@@ -82,18 +82,6 @@ export const typedArrayToString = (arr, s, e) => DECODER.decode(typedArrayPart(a
 /** @param {ArrayBuffer} buf */
 export const bufToString = (buf) => DECODER.decode(buf)
 
-export const checkOPFS = async () => {
-	const dh = await globalThis?.navigator?.storage?.getDirectory()
-	if (!dh) abort('could not open OPFS')
-	const fn = `.c-${randString()}`
-	const fh = await dh.getFileHandle(fn, { create: true })
-	const ah = await fh.createSyncAccessHandle()
-	const cp = ah.close()
-	await cp
-	await dh.removeEntry(fn)
-	if (cp?.then) abort('handle.close() is async')
-}
-
 export const toss = (...args) => {
 	throw new Error(args.join(' '))
 }

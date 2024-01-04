@@ -177,6 +177,12 @@ export const cstrncpy = (tgtPtr, srcPtr, n) => {
 }
 
 /**
+ * @param {TypedArray} hp
+ * @param {number} pos
+ */
+const __peek = (hp, pos) => hp[pos]
+
+/**
  * @param {number} ptr
  */
 const peek1 = (ptr, type = 'i8') => {
@@ -266,7 +272,9 @@ export const peekPtr = (ptr) => peek1(ptr, ptrIR)
 /** @param {number} ptr */
 export const pokePtr = (ptr, value = 0) => poke(ptr, value, ptrIR)
 
-export const peek8 = peek1
+/** @param {number} ptr */
+export const peek8 = (ptr) => heap8()[ptr]
+
 export const peek16 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i16')
 export const peek32 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i32')
 export const peek64 = (...ptr) => peek(1 === ptr.length ? ptr[0] : ptr, 'i64')

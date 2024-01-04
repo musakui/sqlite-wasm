@@ -1,5 +1,5 @@
 import { sqliteError, C_API, structs } from './base.js'
-import { abort, isPtr, checkOPFS } from './util.js'
+import { abort, isPtr } from './util.js'
 import { vfs } from './struct.js'
 import * as capi from './capi.js'
 import * as heap from './heap.js'
@@ -7,6 +7,21 @@ import * as logger from './logger.js'
 
 let thePool = null
 let struct
+let fsError = null
+
+/** @type {FileSystemDirectoryHandle | null} */
+let vfsRoot = null
+
+const vfsState = Object.create(null)
+
+const storeErr = (e, code) => {
+	if (e) {
+		e.sqlite3Rc = code || C_API.SQLITE_IOERR
+		console.error(e)
+	}
+	fsError = e
+	return code
+}
 
 const SECTOR_SIZE = 4096
 const HEADER_MAX_PATH_SIZE = 512
@@ -88,7 +103,7 @@ const ioMethods = {
 					thePool.deletePath(file.path)
 				}
 			} catch (e) {
-				return thePool.storeErr(e, C_API.SQLITE_IOERR)
+				return storeErr(e, C_API.SQLITE_IOERR)
 			}
 		}
 		return 0
@@ -102,7 +117,7 @@ const ioMethods = {
 	},
 	xRead: (pFile, pDest, n, offset64) => {
 		const pool = getPoolForPFile(pFile)
-		pool.storeErr()
+		storeErr()
 		const file = pool.getOFileForS3File(pFile)
 		pool.log(`xRead ${file.path} ${n} @ ${offset64}`)
 		try {
@@ -114,38 +129,38 @@ const ioMethods = {
 			}
 			return 0
 		} catch (e) {
-			return pool.storeErr(e, C_API.SQLITE_IOERR)
+			return storeErr(e, C_API.SQLITE_IOERR)
 		}
 	},
 	xSync: (pFile, flags) => {
 		const pool = getPoolForPFile(pFile)
 		//pool.log(`xSync ${flags}`)
-		pool.storeErr()
+		storeErr()
 		const file = pool.getOFileForS3File(pFile)
 
 		try {
 			file.sah.flush()
 			return 0
 		} catch (e) {
-			return pool.storeErr(e, C_API.SQLITE_IOERR)
+			return storeErr(e, C_API.SQLITE_IOERR)
 		}
 	},
 	xTruncate: (pFile, sz64) => {
 		const pool = getPoolForPFile(pFile)
 		pool.log(`xTruncate ${sz64}`)
-		pool.storeErr()
+		storeErr()
 		const file = pool.getOFileForS3File(pFile)
 
 		try {
 			file.sah.truncate(HEADER_OFFSET_DATA + Number(sz64))
 			return 0
 		} catch (e) {
-			return pool.storeErr(e, C_API.SQLITE_IOERR)
+			return storeErr(e, C_API.SQLITE_IOERR)
 		}
 	},
 	xWrite: (pFile, pSrc, n, offset64) => {
 		const pool = getPoolForPFile(pFile)
-		pool.storeErr()
+		storeErr()
 		const file = pool.getOFileForS3File(pFile)
 		pool.log(`xWrite ${file.path} ${n} ${offset64}`)
 		try {
@@ -153,7 +168,7 @@ const ioMethods = {
 			const nBytes = file.sah.write(heap.heap8u().subarray(pSrc, pSrc + n), op)
 			return n === nBytes ? 0 : abort('Unknown write() failure.')
 		} catch (e) {
-			return pool.storeErr(e, C_API.SQLITE_IOERR)
+			return storeErr(e, C_API.SQLITE_IOERR)
 		}
 	},
 }
@@ -161,7 +176,7 @@ const ioMethods = {
 const vfsMethods = {
 	xAccess: function (pVfs, zName, flags, pOut) {
 		const pool = getPoolForVfs(pVfs)
-		pool.storeErr()
+		storeErr()
 		try {
 			const name = pool.getPath(zName)
 			heap.poke32(pOut, pool.hasFilename(name) ? 1 : 0)
@@ -181,12 +196,12 @@ const vfsMethods = {
 	xDelete: function (pVfs, zName, doSyncDir) {
 		const pool = getPoolForVfs(pVfs)
 		pool.log(`xDelete ${heap.cstrToJs(zName)}`)
-		pool.storeErr()
+		storeErr()
 		try {
 			pool.deletePath(pool.getPath(zName))
 			return 0
 		} catch (e) {
-			pool.storeErr(e)
+			storeErr(e)
 			return C_API.SQLITE_IOERR_DELETE
 		}
 	},
@@ -196,7 +211,8 @@ const vfsMethods = {
 	},
 	xGetLastError: function (pVfs, nOut, pOut) {
 		const pool = getPoolForVfs(pVfs)
-		const e = pool.popErr()
+		const e = fsError
+		fsError = null
 		pool.log(`xGetLastError ${nOut} e =`, e)
 		if (e) {
 			const scope = heap.scopedAllocPush()
@@ -240,7 +256,7 @@ const vfsMethods = {
 			heap.poke32(pOutFlags, flags)
 			return 0
 		} catch (e) {
-			pool.storeErr(e)
+			storeErr(e)
 			return C_API.SQLITE_CANTOPEN
 		}
 	},
@@ -287,10 +303,28 @@ const createOpfsVfs = function (vfsName) {
 	return opfsVfs
 }
 
+const VFS_STATE_FILENAME = '.vfs_state'
+
+export const getOPFS = async () => {
+	const dh = await globalThis?.navigator?.storage?.getDirectory()
+	if (!dh) abort('could not open OPFS')
+	const fh = await dh.getFileHandle(VFS_STATE_FILENAME, { create: true })
+	const sah = await fh.createSyncAccessHandle()
+	const cp = sah.close()
+	await cp
+	if (cp?.then) abort('sah.close() is async')
+	const stateFile = await fh.getFile()
+	if (stateFile.size) {
+		Object.assign(vfsState, JSON.parse(await stateFile.text()))
+	}
+	vfsRoot = dh
+	return dh
+}
+
 export const installSAHPool = async (sqlite3) => {
 	struct = new structs.sqlite3_io_methods()
 	vfs.installVfs({ io: { struct, methods: ioMethods } })
-	await checkOPFS()
+	await getOPFS()
 	thePool = new OpfsSAHPool({})
 	try {
 		await thePool.isReady
@@ -416,7 +450,7 @@ class OpfsSAHPool {
 						}
 					}
 				} catch (e) {
-					this.storeErr(e)
+					storeErr(e)
 					this.releaseAccessHandles()
 					throw e
 				}
@@ -484,8 +518,8 @@ class OpfsSAHPool {
 
 	async reset(clearFiles) {
 		await this.isReady
-		let h = await navigator.storage.getDirectory()
-		let prev, prevName
+		let h = vfsRoot
+		let prev
 		for (const d of this.vfsDir.split('/')) {
 			if (d) {
 				prev = h
@@ -511,21 +545,6 @@ class OpfsSAHPool {
 			this.setAssociatedPath(sah, '', 0)
 		}
 		return !!sah
-	}
-
-	storeErr(e, code) {
-		if (e) {
-			e.sqlite3Rc = code || C_API.SQLITE_IOERR
-			console.error(e)
-		}
-		this.$error = e
-		return code
-	}
-
-	popErr() {
-		const rc = this.$error
-		this.$error = undefined
-		return rc
 	}
 
 	nextAvailableSAH() {
@@ -573,19 +592,6 @@ class OpfsSAHPool {
 			logger.error(this.vfsName, 'removeVfs() failed:', e)
 		}
 		return true
-	}
-
-	exportFile(name) {
-		const sah = this.#mapFilenameToSAH.get(name) || abort(`File not found: ${name}`)
-		const n = sah.getSize() - HEADER_OFFSET_DATA
-		const b = new Uint8Array(n > 0 ? n : 0)
-		if (n > 0) {
-			const nRead = sah.read(b, { at: HEADER_OFFSET_DATA })
-			if (nRead != n) {
-				abort(`Expected to read ${n} bytes but read ${nRead}`)
-			}
-		}
-		return b
 	}
 
 	async importDbChunked(name, callback) {
@@ -643,9 +649,7 @@ class OpfsSAHPool {
 			this.setAssociatedPath(sah, '', 0)
 			abort(`Expected to write ${n} bytes but wrote ${nWrote}`)
 		} else {
-			sah.write(new Uint8Array([1, 1]), {
-				at: HEADER_OFFSET_DATA + 18,
-			})
+			sah.write(new Uint8Array([1, 1]), { at: HEADER_OFFSET_DATA + 18 })
 			this.setAssociatedPath(sah, name, C_API.SQLITE_OPEN_MAIN_DB)
 		}
 		return nWrote
