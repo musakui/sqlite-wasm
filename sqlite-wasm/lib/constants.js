@@ -20,3 +20,5 @@ export const BindTypes = {
 	blob: 5,
 	...(HAS_BIGINT ? { bigint: 2 } : null),
 }
+
+export * as SQLITE from './embedded.js'

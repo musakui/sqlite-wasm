@@ -1,3 +1,5 @@
+import * as SQLITE from './embedded.js'
+import { DEBUG } from './constants.js'
 import { getASM, getMemory } from './instance.js'
 import { abort, isPtr, typedArrayToString } from './util.js'
 
@@ -115,15 +117,17 @@ export const setup = () => {
 	const asm = getASM()
 	asm.__wasm_call_ctors()
 
-	const cjStr = asm.sqlite3_wasm_enum_json()
-	if (!cjStr) abort(DEBUG ? MAINTANENCE_REQUIRED : 'enum loading failed')
-
 	StructBinder = Jaccwabyt({
 		heap,
 		alloc,
 		dealloc,
 		memberPrefix: '$',
 	})
+
+	//if (!DEBUG) return
+
+	const cjStr = asm.sqlite3_wasm_enum_json()
+	if (!cjStr) abort(MAINTANENCE_REQUIRED)
 
 	const obj = JSON.parse(cstrToJs(cjStr))
 	for (const [g, group] of Object.entries(obj)) {
@@ -146,6 +150,15 @@ export const setup = () => {
 		for (const [k, v] of ent) {
 			C_API[k] = v
 		}
+	}
+
+	const cloned = { ...C_API }
+	for (const [k, v] of Object.entries(SQLITE)) {
+		const sk = `SQLITE_${k}`
+		const ov = cloned[sk]
+		delete cloned[sk]
+		if (ov === v) continue
+		console.warn(`mismatch 'SQLITE_${k}': ${v} -> ${ov}`)
 	}
 }
 

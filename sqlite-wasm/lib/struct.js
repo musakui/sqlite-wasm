@@ -34,6 +34,77 @@ const mnames = [
 	'xShadowName',
 ]
 
+const installMethod = function callee(tgt, name, func, applyArgcCheck = callee.installMethodArgcCheck) {
+	if (!(tgt instanceof StructBinder.StructType)) {
+		sqliteError('Usage error: target object is-not-a StructType.')
+	} else if (!(func instanceof Function) && !isPtr(func)) {
+		sqliteError('Usage errror: expecting a Function or WASM pointer to one.')
+	}
+	if (1 === arguments.length) {
+		return (n, f) => callee(tgt, n, f, applyArgcCheck)
+	}
+	if (!callee.argcProxy) {
+		callee.argcProxy = function (tgt, funcName, func, sig) {
+			return function (...args) {
+				if (func.length !== arguments.length) {
+					sqliteError('Argument mismatch for', tgt.structInfo.name + '::' + funcName + ': Native signature is:', sig)
+				}
+				return func.apply(this, args)
+			}
+		}
+
+		callee.removeFuncList = function () {
+			if (this.ondispose.__removeFuncList) {
+				this.ondispose.__removeFuncList.forEach((v, ndx) => {
+					if ('number' === typeof v) {
+						try {
+							heap.uninstallFunction(v)
+						} catch (e) {}
+					}
+				})
+				delete this.ondispose.__removeFuncList
+			}
+		}
+	}
+	const sigN = tgt.memberSignature(name)
+	if (sigN.length < 2) {
+		sqliteError('Member', name, 'does not have a function pointer signature:', sigN)
+	}
+	const memKey = tgt.memberKey(name)
+	const fProxy = applyArgcCheck && !isPtr(func) ? callee.argcProxy(tgt, memKey, func, sigN) : func
+	if (isPtr(fProxy)) {
+		if (fProxy && !heap.functionEntry(fProxy)) {
+			sqliteError('Pointer', fProxy, 'is not a WASM function table entry.')
+		}
+		tgt[memKey] = fProxy
+	} else {
+		const pFunc = heap.installFunction(fProxy, tgt.memberSignature(name, true))
+		tgt[memKey] = pFunc
+		if (!tgt.ondispose || !tgt.ondispose.__removeFuncList) {
+			tgt.addOnDispose('ondispose.__removeFuncList handler', callee.removeFuncList)
+			tgt.ondispose.__removeFuncList = []
+		}
+		tgt.ondispose.__removeFuncList.push(memKey, pFunc)
+	}
+	return (n, f) => callee(tgt, n, f, applyArgcCheck)
+}
+
+export const installMethods = function (structInstance, methods, applyArgcCheck = installMethod.installMethodArgcCheck) {
+	const seen = new Map()
+	for (const k of Object.keys(methods)) {
+		const m = methods[k]
+		const prior = seen.get(m)
+		if (prior) {
+			const mkey = structInstance.memberKey(k)
+			structInstance[mkey] = structInstance[structInstance.memberKey(prior)]
+		} else {
+			installMethod(structInstance, k, m, applyArgcCheck)
+			seen.set(m, k)
+		}
+	}
+	return structInstance
+}
+
 export const installStruct = (sqlite3) => {
 	sqlite3.vfs = vfs
 	sqlite3.vtab = vtab
@@ -69,78 +140,9 @@ export const installStruct = (sqlite3) => {
 		return asPtr ? ptr : new sii.sqlite3_index_orderby(ptr)
 	}
 
-	const installMethod = function callee(tgt, name, func, applyArgcCheck = callee.installMethodArgcCheck) {
-		if (!(tgt instanceof StructBinder.StructType)) {
-			sqliteError('Usage error: target object is-not-a StructType.')
-		} else if (!(func instanceof Function) && !isPtr(func)) {
-			sqliteError('Usage errror: expecting a Function or WASM pointer to one.')
-		}
-		if (1 === arguments.length) {
-			return (n, f) => callee(tgt, n, f, applyArgcCheck)
-		}
-		if (!callee.argcProxy) {
-			callee.argcProxy = function (tgt, funcName, func, sig) {
-				return function (...args) {
-					if (func.length !== arguments.length) {
-						sqliteError('Argument mismatch for', tgt.structInfo.name + '::' + funcName + ': Native signature is:', sig)
-					}
-					return func.apply(this, args)
-				}
-			}
-
-			callee.removeFuncList = function () {
-				if (this.ondispose.__removeFuncList) {
-					this.ondispose.__removeFuncList.forEach((v, ndx) => {
-						if ('number' === typeof v) {
-							try {
-								heap.uninstallFunction(v)
-							} catch (e) {}
-						}
-					})
-					delete this.ondispose.__removeFuncList
-				}
-			}
-		}
-		const sigN = tgt.memberSignature(name)
-		if (sigN.length < 2) {
-			sqliteError('Member', name, 'does not have a function pointer signature:', sigN)
-		}
-		const memKey = tgt.memberKey(name)
-		const fProxy = applyArgcCheck && !isPtr(func) ? callee.argcProxy(tgt, memKey, func, sigN) : func
-		if (isPtr(fProxy)) {
-			if (fProxy && !heap.functionEntry(fProxy)) {
-				sqliteError('Pointer', fProxy, 'is not a WASM function table entry.')
-			}
-			tgt[memKey] = fProxy
-		} else {
-			const pFunc = heap.installFunction(fProxy, tgt.memberSignature(name, true))
-			tgt[memKey] = pFunc
-			if (!tgt.ondispose || !tgt.ondispose.__removeFuncList) {
-				tgt.addOnDispose('ondispose.__removeFuncList handler', callee.removeFuncList)
-				tgt.ondispose.__removeFuncList = []
-			}
-			tgt.ondispose.__removeFuncList.push(memKey, pFunc)
-		}
-		return (n, f) => callee(tgt, n, f, applyArgcCheck)
-	}
 	installMethod.installMethodArgcCheck = false
 
-	const installMethods = function (structInstance, methods, applyArgcCheck = installMethod.installMethodArgcCheck) {
-		const seen = new Map()
-		for (const k of Object.keys(methods)) {
-			const m = methods[k]
-			const prior = seen.get(m)
-			if (prior) {
-				const mkey = structInstance.memberKey(k)
-				structInstance[mkey] = structInstance[structInstance.memberKey(prior)]
-			} else {
-				installMethod(structInstance, k, m, applyArgcCheck)
-				seen.set(m, k)
-			}
-		}
-		return structInstance
-	}
-
+	/*
 	StructBinder.StructType.prototype.installMethod = function callee(name, func, applyArgcCheck = installMethod.installMethodArgcCheck) {
 		return arguments.length < 3 && name && 'object' === typeof name ? installMethods(this, ...arguments) : installMethod(this, ...arguments)
 	}
@@ -148,6 +150,7 @@ export const installStruct = (sqlite3) => {
 	StructBinder.StructType.prototype.installMethods = function (methods, applyArgcCheck = installMethod.installMethodArgcCheck) {
 		return installMethods(this, methods, applyArgcCheck)
 	}
+	*/
 
 	structs.sqlite3_vfs.prototype.registerVfs = function (asDefault = false) {
 		if (!(this instanceof structs.sqlite3_vfs)) {
@@ -203,17 +206,13 @@ export const installStruct = (sqlite3) => {
 
 		return Object.assign(Object.create(null), {
 			StructType,
-
 			create: (ppOut) => {
 				const rc = __xWrap()
 				heap.pokePtr(ppOut, rc.pointer)
 				return rc
 			},
-
 			get: (pCObj) => __xWrap(pCObj),
-
 			unget: (pCObj) => __xWrap(pCObj, true),
-
 			dispose: (pCObj) => {
 				const o = __xWrap(pCObj, true)
 				if (o) o.dispose()

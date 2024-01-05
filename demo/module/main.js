@@ -15,8 +15,14 @@ const runWorker = (worker) => {
 }
 
 const app = document.querySelector('#app')
-app.innerHTML = 'updated library:\n\n'
-runWorker(new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }))
+
+if (false) {
+	app.innerHTML = 'updated library:\n\n'
+	runWorker(new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }))
+} else {
+	app.innerHTML = 'shake:\n\n'
+	runWorker(new Worker(new URL('./shake.js', import.meta.url), { type: 'module' }))
+}
 
 const ori = document.querySelector('#ori')
 ori.onclick = () => {
