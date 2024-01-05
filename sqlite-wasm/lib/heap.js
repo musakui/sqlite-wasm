@@ -286,6 +286,7 @@ export const poke16 = (ptr, value) => poke(ptr, value, 'i16')
 export const poke32 = (ptr, value) => poke(ptr, value, 'i32')
 export const poke64 = (ptr, value) => poke(ptr, value, 'i64')
 export const poke32f = (ptr, value) => poke(ptr, value, 'f32')
+export const poke64f = (ptr, value) => poke(ptr, value, 'f64')
 
 const rxJSig = /^(\w)\((\w*)\)$/
 const typeCodes = { f64: 0x7c, f32: 0x7d, i64: 0x7e, i32: 0x7f }

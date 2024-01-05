@@ -55,12 +55,6 @@ const setPoolForPFile = (pFile, pool) => {
 	else __mapSqlite3File.delete(pFile)
 }
 
-/** @type {FileSystemSyncAccessHandle[]} */
-const freeHandles = []
-
-/** @type {Map<number, [sah: FileSystemSyncAccessHandle, path: string, flags: number]>} */
-const handleMap = new Map()
-
 /** @type {Map<number, number>} */
 const lockTypeMap = new Map()
 
