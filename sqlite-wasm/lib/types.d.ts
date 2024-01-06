@@ -19,6 +19,25 @@ export type VersionInfo = {
 	SQLITE_VERSION_NUMBER: number
 }
 
+export interface FileSystemSyncAccessHandle {
+	/** persists the changes from write() */
+	flush(): void
+	/** closes the file handle and releases the lock */
+	close(): void
+	/** get the size of the file in bytes */
+	getSize(): number
+	/** resizes the file to the specified number of bytes */
+	truncate(newSize: number): void
+	/**
+	 * @param buffer buffer to read content into
+	 */
+	read(buffer: ArrayBuffer, opt?: { at?: number }): number
+	/**
+	 * @param buffer buffer to get the content to write
+	 */
+	write(buffer: ArrayBuffer, opt?: { at?: number }): number
+}
+
 interface SharedTypeMap {
 	i8: number
 	i16: number

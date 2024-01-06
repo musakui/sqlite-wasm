@@ -1,6 +1,7 @@
-import { load, getASM } from '../../sqlite-wasm/lib/instance.js'
-import { setup, structs } from '../../sqlite-wasm/lib/base.js'
-import { installMethods } from '../../sqlite-wasm/lib/struct.js'
+import { load } from '../../sqlite-wasm/lib/instance.js'
+import { setup } from '../../sqlite-wasm/lib/base.js'
+import { initVFS, openDbFile } from '../../sqlite-wasm/lib/vfs.js'
+import { openDb } from '../../sqlite-wasm/lib/db_ops.js'
 
 /** @param {string} message */
 const log = (message, body) => self.postMessage({ message, body })
@@ -11,11 +12,8 @@ await load()
 log('loaded')
 
 setup()
-const asm = getASM()
-
-const ioStruct = new structs.sqlite3_io_methods()
-installMethods(ioStruct, {
-})
-console.log(ioStruct)
+const vfsPointer = await initVFS()
+await openDbFile('db.sqlite3')
+openDb('db.sqlite3', vfsPointer)
 
 log('end')

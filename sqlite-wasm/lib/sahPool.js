@@ -325,6 +325,7 @@ export const installSAHPool = async (sqlite3) => {
 		if (sqlite3.oo1) {
 			const oo1 = sqlite3.oo1
 			const theVfs = thePool.getVfs()
+			console.log(theVfs)
 			const OpfsSAHPoolDb = function (...args) {
 				const opt = oo1.DB.dbCtorHelper.normalizeArgs(...args)
 				opt.vfs = theVfs.$zName
@@ -378,7 +379,7 @@ class OpfsSAHPool {
 	}
 
 	log(...args) {
-		console.log(...args)
+		//console.log(...args)
 	}
 
 	getVfs() {

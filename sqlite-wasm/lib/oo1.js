@@ -279,6 +279,7 @@ export const installOO1 = (sqlite3) => {
 		if (flagsStr.indexOf('w') >= 0) oflags |= C_API.SQLITE_OPEN_READWRITE
 		if (0 === oflags) oflags |= C_API.SQLITE_OPEN_READONLY
 		oflags |= C_API.SQLITE_OPEN_EXRESCODE
+		console.log('open', opt, fn, vfsName)
 		const stack = pstack.getPtr()
 		try {
 			const pPtr = pstack.allocPtr()

@@ -1,7 +1,8 @@
-import { ptrSizeof } from './constants.js'
-import { C_API } from './base.js'
+import { ptrSizeof, SQLITE } from './constants.js'
+import { C_API, getASM } from './base.js'
 import * as heap from './heap.js'
 import * as capi from './capi.js'
+import * as pstack from './pstack.js' 
 import { DB, Stmt } from './oo2.js'
 import { bigIntFitsDouble } from './util.js'
 
@@ -107,5 +108,31 @@ export const db_exec_str = (db, sql, bind = [], cb = undefined) => {
 			stmt.unlock()
 			stmt.finalize()
 		}
+	}
+}
+
+const oflags = SQLITE.OPEN_CREATE | SQLITE.OPEN_READWRITE | SQLITE.OPEN_EXRESCODE
+
+export const openDb = (fn, vfs) => {
+	let pDb
+	const asm = getASM()
+	const stack = pstack.getPtr()
+	try {
+		const fnPtr = heap.allocCString(fn)
+		const pPtr = pstack.allocPtr()
+		const rc = asm.sqlite3_open_v2(fnPtr, pPtr, oflags, vfs)
+		pDb = heap.peekPtr(pPtr)
+		asm.sqlite3_extended_result_codes(pDb, 1)
+	} catch (e) {
+		if (pDb) asm.sqlite3_close_v2_raw(pDb)
+		throw e
+	} finally {
+		pstack.restore(stack)
+	}
+	try {
+		const pVfs = asm.sqlite3_wasm_db_vfs(pDb, 0)
+	} catch (e) {
+		// close
+		throw e
 	}
 }

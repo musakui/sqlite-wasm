@@ -1,20 +1,36 @@
-import { structs } from './base.js'
+import { getASM, sqliteError, structs } from './base.js'
 import * as SQLITE from './embedded.js'
 import * as heap from './heap.js'
 import { abort } from './util.js'
+import { installMethods } from './struct.js'
+
+/** @typedef {import('./types').FileSystemSyncAccessHandle} FileSystemSyncAccessHandle */
+
+/** @type {number | null} */
+let ioPointer = null
+
+/** @type {number | null} */
+let vfsPointer = null
 
 /** @type {unknown} */
 let fsError = null
 
 /** @type {FileSystemDirectoryHandle | null} */
+let rootDh = null
+
+/** @type {FileSystemDirectoryHandle | null} */
 let poolDh = null
 
+const MIN_POOL_SIZE = 2
 const SECTOR_SIZE = 4096
 
 const EPOCH_JULIAN_DAY = 2440587.5
 const MILLSECONDS_IN_DAY = 86400000
 
-const OPAQUE_DIR_NAME = '.vfs_pool'
+const VFS_ROOT_DIRNAME = '.sqlite_vfs'
+const VFS_STATE_FILENAME = '.sqlite_vfs_state'
+
+let poolDir = VFS_ROOT_DIRNAME
 
 const PERSISTENT_FILE_TYPES = SQLITE.OPEN_MAIN_DB | SQLITE.OPEN_MAIN_JOURNAL | SQLITE.OPEN_SUPER_JOURNAL | SQLITE.OPEN_WAL
 
@@ -38,21 +54,34 @@ const storeErr = (e, code) => {
 /** @type {string[]} */
 const freeHandles = []
 
-/** @type {Map<string, FileSystemSyncAccessHandle>} */
+/**
+ * real path -> SyncAccessHandle
+ * @type {Map<string, FileSystemSyncAccessHandle>}
+ */
 const sahMap = new Map()
 
-/** @type {Map<number, string>} */
+/**
+ * vfs file pointer -> vfs path
+ * @type {Map<number, string>}
+ */
 const ptrMap = new Map()
 
-/** @type {Map<string, string>} */
+/**
+ * vfs path -> real path
+ * @type {Map<string, string>}
+ */
 const vfsFileMap = new Map()
 
-/** @type {Map<string, number>} */
+/**
+ * vfs path -> flags
+ * @type {Map<string, number>}
+ */
 const vfsFlags = new Map()
 
 const addHandle = async () => {
-	const name = randName()
-	const fh = await poolDh.getFileHandle(name, { create: true })
+	const fn = randName()
+	const fh = await poolDh.getFileHandle(fn, { create: true })
+	const name = `${poolDir}/${fn}`
 	sahMap.set(name, await fh.createSyncAccessHandle())
 	freeHandles.push(name)
 	return name
@@ -209,7 +238,26 @@ const xClose = (pFile) => {
  */
 const xOpen = (pVfs, zName, pFile, flags, pOutFlags) => {
 	storeErr()
-	const fn = (zName && heap.peek8(zName)) ? heap.cstrToJs(zName) : randName()
+	const fn = zName && heap.peek8(zName) ? heap.cstrToJs(zName) : randName()
+	try {
+		let realPath = vfsFileMap.get(fn)
+		if (!realPath && flags && SQLITE.OPEN_CREATE) {
+			if (!freeHandles.length) return abort(`no more free handles to create ${fn}`)
+			realPath = freeHandles.shift()
+			vfsFileMap.set(fn, realPath)
+		}
+		if (!realPath) abort(`file not found ${fn}`)
+		ptrMap.set(pFile, realPath)
+		setLock(pFile, SQLITE.LOCK_NONE)
+		const sq3File = new structs.sqlite3_file(pFile)
+		sq3File.$pMethods = ioPointer
+		sq3File.dispose()
+		heap.poke32(pOutFlags, flags)
+		return 0
+	} catch (err) {
+		storeErr(err)
+		return SQLITE.CANTOPEN
+	}
 }
 
 /**
@@ -263,9 +311,47 @@ const xDelete = (pVfs, zName, _doSyncDir) => {
 	}
 }
 
+export const openDbFile = async (fn) => {
+	const fh = await rootDh.getFileHandle(fn, { create: true })
+	sahMap.set(fn, await fh.createSyncAccessHandle())
+	vfsFileMap.set(fn, fn)
+}
 
 export const initVFS = async () => {
-	const ioMethods = {
+	const dh = await globalThis?.navigator?.storage?.getDirectory()
+	if (!dh) abort('could not open OPFS')
+
+	const fh = await dh.getFileHandle(VFS_STATE_FILENAME, { create: true })
+	const sah = await fh.createSyncAccessHandle()
+	const cp = sah.close()
+	await cp
+	if (cp?.then) abort('sah.close() is async')
+
+	const stateFile = await fh.getFile()
+	const state = new Map(stateFile.size ? Object.entries(JSON.parse(await stateFile.text())) : [])
+
+	rootDh = dh
+	poolDh = await dh.getDirectoryHandle(VFS_ROOT_DIRNAME, { create: true })
+	for await (const hd of poolDh.values()) {
+		if (hd.kind !== 'file') continue
+		const pathParts = await dh.resolve(hd)
+		const name = pathParts.join('/')
+		sahMap.set(name, await hd.createSyncAccessHandle())
+		if (state.has(name)) {
+			const [vn, vf] = state.get(name)
+			vfsFileMap.set(vn, name)
+			vfsFlags.set(vn, vf)
+		} else {
+			freeHandles.push(name)
+		}
+	}
+
+	while (freeHandles.length < MIN_POOL_SIZE) {
+		await addHandle()
+	}
+
+	const ioStruct = new structs.sqlite3_io_methods()
+	installMethods(ioStruct, {
 		xSectorSize,
 		xFileControl,
 		xLock: setLock,
@@ -278,14 +364,36 @@ export const initVFS = async () => {
 		xTruncate,
 		xFileSize,
 		xDeviceCharacteristics,
+	})
+
+	ioPointer = ioStruct.pointer
+
+	const opfsVfs = new structs.sqlite3_vfs()
+	opfsVfs.$szOsFile = structs.sqlite3_file.structInfo.sizeof
+	opfsVfs.$mxPathname = 512
+
+	const asm = getASM()
+
+	const pDVfs = asm.sqlite3_vfs_find(null)
+	const dVfs = pDVfs ? new structs.sqlite3_vfs(pDVfs) : null
+	if (dVfs) {
+		opfsVfs.$xRandomness = dVfs.$xRandomness
+		opfsVfs.$xSleep = dVfs.$xSleep
+		dVfs.dispose()
 	}
 
-	const vfsMethods = {
+	installMethods(opfsVfs, {
 		xOpen,
 		xAccess,
 		xDelete,
 		xCurrentTime,
 		xCurrentTimeInt64,
 		xFullPathname,
-	}
+	})
+
+	const rc = asm.sqlite3_vfs_register(opfsVfs.pointer, 1)
+	if (rc) sqliteError(rc, `vfs registration failed`)
+	vfsPointer = opfsVfs.pointer
+	if (!vfsPointer) return sqliteError(`no pointer`)
+	return vfsPointer
 }
