@@ -219,7 +219,7 @@ const xClose = (pFile) => {
 	if (!path) return 0
 	try {
 		sahMap.get(path).flush()
-		if (flag & SQLITE.OPEN_DELETEONCLOSE) {
+		if (vfsFlags.get(ptrMap.get(pFile)) & SQLITE.OPEN_DELETEONCLOSE) {
 			vfsFileMap.delete(path)
 			freeHandles.push(path)
 		}
@@ -245,9 +245,11 @@ const xOpen = (pVfs, zName, pFile, flags, pOutFlags) => {
 			if (!freeHandles.length) return abort(`no more free handles to create ${fn}`)
 			realPath = freeHandles.shift()
 			vfsFileMap.set(fn, realPath)
+			addHandle()
 		}
 		if (!realPath) abort(`file not found ${fn}`)
-		ptrMap.set(pFile, realPath)
+		ptrMap.set(pFile, fn)
+		vfsFlags.set(fn, flags)
 		setLock(pFile, SQLITE.LOCK_NONE)
 		const sq3File = new structs.sqlite3_file(pFile)
 		sq3File.$pMethods = ioPointer
@@ -281,11 +283,8 @@ const xAccess = (pVfs, zName, flags, pOut) => {
 	storeErr()
 	const fn = heap.cstrToJs(zName)
 	if (fn) {
-		for (const info of fileMap.values()) {
-			if (info[1] !== fn) continue
-			heap.poke32(pOut, 1)
-			return 0
-		}
+		heap.poke32(pOut, vfsFileMap.has(fn) ? 1 : 0)
+		return 0
 	}
 	heap.poke32(pOut, 0)
 	return 0
@@ -299,10 +298,11 @@ const xAccess = (pVfs, zName, flags, pOut) => {
 const xDelete = (pVfs, zName, _doSyncDir) => {
 	storeErr()
 	try {
-		const file = fileMap.get(heap.cstrToJs(zName))
+		const fn = heap.cstrToJs(zName)
+		const file = vfsFileMap.get(fn)
 		if (file) {
-			freeHandles.push(file[1])
-			file[1] = null
+			freeHandles.push(file)
+			vfsFileMap.delete(fn)
 		}
 		return 0
 	} catch (e) {
