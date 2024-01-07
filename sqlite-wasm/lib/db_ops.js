@@ -1,5 +1,5 @@
 import { ptrSizeof, SQLITE } from './constants.js'
-import { C_API, getASM, sqliteError } from './base.js'
+import { getASM, sqliteError } from './base.js'
 import * as heap from './heap.js'
 import * as capi from './capi.js'
 import * as pstack from './pstack.js' 
@@ -13,17 +13,18 @@ import { bigIntFitsDouble } from './util.js'
  * @param {number} [asType]
  */
 const column_result = (pSt, idx, asType) => {
-	switch (asType ?? capi.sqlite3_column_type(pSt, idx)) {
-		case C_API.SQLITE_NULL:
+	const asm = getASM()
+	switch (asType ?? asm.sqlite3_column_type(pSt, idx)) {
+		case SQLITE.NULL:
 			return null
-		case C_API.SQLITE_INTEGER:
-			const num = capi.sqlite3_column_int64(pSt, idx)
+		case SQLITE.INTEGER:
+			const num = asm.sqlite3_column_int64(pSt, idx)
 			return bigIntFitsDouble(num) ? Number(num) : num
-		case C_API.SQLITE_FLOAT:
-			return capi.sqlite3_column_double(pSt, idx)
-		case C_API.SQLITE_TEXT:
+		case SQLITE.FLOAT:
+			return asm.sqlite3_column_double(pSt, idx)
+		case SQLITE.TEXT:
 			return capi.sqlite3_column_text(pSt, idx)
-		case C_API.SQLITE_BLOB:
+		case SQLITE.BLOB:
 			const n = capi.sqlite3_column_bytes(pSt, idx)
 			const ptr = capi.sqlite3_column_blob(pSt, idx)
 			const arr = new Uint8Array(n)
@@ -36,18 +37,18 @@ const column_result = (pSt, idx, asType) => {
 
 /**
  * @param {StmtPointer} pSt
+ * @param {number} nCols
  */
-const getRowAsArray = (pSt) => {
-	const length = capi.sqlite3_column_count(pSt)
-	return Array.from({ length }, (_, i) => column_result(pSt, i))
+const getRowAsArray = (pSt, nCols) => {
+	return Array.from({ length: nCols }, (_, i) => column_result(pSt, i))
 }
 
 /**
  * @param {StmtPointer} pSt
+ * @param {number} nCols
  */
-const getRowAsObject = (pSt) => {
-	const length = capi.sqlite3_column_count(pSt)
-	const arr = Array.from({ length }, (_, i) => {
+const getRowAsObject = (pSt, nCols) => {
+	const arr = Array.from({ length: nCols }, (_, i) => {
 		return /** @type {const} */ ([
 			//
 			capi.sqlite3_column_name(pSt, i),
@@ -58,13 +59,33 @@ const getRowAsObject = (pSt) => {
 }
 
 /**
+ * @param {number} pDb
+ * @param {string} sql
+ */
+export const db_exec = (pDb, sql) => {
+	const asm = getASM()
+	const stack = heap.scopedAllocPush()
+	try {
+		const sqlByteLen = heap.jstrlen(sql)
+		const pSql = heap.scopedAlloc(2 * ptrSizeof + (sqlByteLen + 1)) + ptrSizeof + ptrSizeof
+		heap.jstrcpy(sql, heap.heap8(), pSql, sqlByteLen, false)
+		heap.poke(pSql + sqlByteLen, 0)
+
+		const rc = asm.sqlite3_exec(pDb, pSql, 0, 0, 0)
+		if (rc) sqliteError(rc, 'exec error')
+	} finally {
+		heap.scopedAllocPop(stack)
+	}
+}
+
+/**
  * @template {T}
  * @param {number} pDb
  * @param {string} sql
  * @param {unknown[]} bind
  * @param {(p: import('./oo2').StmtPointer, d: import('./oo2').DBPointer) => T} cb
  */
-export const db_exec_str = (pDb, sql, bind = [], cb = undefined) => {
+export const db_exec_stmt = (pDb, sql, bind = [], cb = undefined) => {
 	const asm = getASM()
 	const stack = heap.scopedAllocPush()
 	try {
@@ -73,45 +94,44 @@ export const db_exec_str = (pDb, sql, bind = [], cb = undefined) => {
 		const pzTail = ppStmt + ptrSizeof
 		let pSql = pzTail + ptrSizeof
 		const pSqlEnd = pSql + sqlByteLen
+
 		heap.jstrcpy(sql, heap.heap8(), pSql, sqlByteLen, false)
 		heap.poke(pSql + sqlByteLen, 0)
 
 		/** @type {T[]} */
 		const resultRows = []
 
-		while (pSql && heap.peek(pSql, 'i8')) {
+		while (pSql && heap.peek8(pSql)) {
 			heap.pokePtr([ppStmt, pzTail], 0)
-			const prc = asm.sqlite3_prepare_v3(pDb, pSql, sqlByteLen, 0, ppStmt, pzTail)
-			//checkRc(prc, pDb)
+			const prc = asm.sqlite3_prepare_v2(pDb, pSql, sqlByteLen, ppStmt, pzTail)
+			if (prc) sqliteError(prc, 'exec error')
 			const pStmt = heap.peekPtr(ppStmt)
 			pSql = heap.peekPtr(pzTail)
 			sqlByteLen = pSqlEnd - pSql
 			if (!pStmt) continue
+			/** @type {number} */
 			const paramCount = asm.sqlite3_bind_parameter_count(pStmt)
 			if (bind.length && paramCount) {
 				// bind stmt
 			}
-			asm.sqlite3_step(pStmt)
-			asm.sqlite3_finalize(pStmt)
-			/*
-			if (cb && capi.sqlite3_column_count(pStmt)) {
-				resultRows.push(...stmt.runSteps(cb))
-				cb = null
-			} else {
-				stmt.step()
+			const nCols = asm.sqlite3_column_count(pStmt)
+			let rc = 0
+			while (rc !== SQLITE.DONE) {
+				rc = asm.sqlite3_step(pStmt)
+				if (rc === SQLITE.ROW) {
+					console.log('got row', getRowAsArray(pStmt, nCols))
+				} else if (rc !== SQLITE.DONE) {
+					sqliteError(rc, 'step error')
+				}
 			}
-			stmt.reset().finalize()
-			*/
+			//const rrc = asm.sqlite3_reset(pStmt)
+			//if (rrc) sqliteError(rrc, 'reset error')
+			const frc = asm.sqlite3_finalize(pStmt)
+			if (frc) sqliteError(frc, 'finalize error')
 		}
 		return resultRows
 	} finally {
 		heap.scopedAllocPop(stack)
-		/*
-		if (stmt) {
-			stmt.unlock()
-			stmt.finalize()
-		}
-		*/
 	}
 }
 
@@ -137,3 +157,6 @@ export const openDb = (fn, flags = 0, pVfs = null) => {
 	}
 	return pDb
 }
+
+/** @param {number} pDb */
+export const closeDb = (pDb) => getASM().sqlite3_close_v2(pDb)

@@ -1,7 +1,7 @@
 import { getASM, sqliteError, structs } from './base.js'
 import * as SQLITE from './embedded.js'
 import * as heap from './heap.js'
-import { abort } from './util.js'
+import { NO_OP, abort } from './util.js'
 import { installMethods } from './struct.js'
 
 /** @typedef {import('./types').FileSystemSyncAccessHandle} FileSystemSyncAccessHandle */
@@ -23,14 +23,21 @@ let poolDh = null
 
 const MIN_POOL_SIZE = 2
 const SECTOR_SIZE = 4096
+const CREATE_TRUE = { create: true }
 
 const EPOCH_JULIAN_DAY = 2440587.5
 const MILLSECONDS_IN_DAY = 86400000
 
 const VFS_ROOT_DIRNAME = '.sqlite_vfs'
-const VFS_STATE_FILENAME = '.sqlite_vfs_state'
+const VFS_STATE_FILENAME = '.state'
 
 let poolDir = VFS_ROOT_DIRNAME
+
+/** @type {number | null} */
+let capTimeout = null
+
+/** @type {number | null} */
+let stateTimeout = null
 
 const PERSISTENT_FILE_TYPES = SQLITE.OPEN_MAIN_DB | SQLITE.OPEN_MAIN_JOURNAL | SQLITE.OPEN_SUPER_JOURNAL | SQLITE.OPEN_WAL
 
@@ -80,11 +87,31 @@ const vfsFlags = new Map()
 
 const addHandle = async () => {
 	const fn = randName()
-	const fh = await poolDh.getFileHandle(fn, { create: true })
+	const fh = await poolDh.getFileHandle(fn, CREATE_TRUE)
 	const name = `${poolDir}/${fn}`
 	sahMap.set(name, await fh.createSyncAccessHandle())
 	freeHandles.push(name)
 	return name
+}
+
+const adjustCapacity = () => {
+	if (capTimeout) clearTimeout(capTimeout)
+	capTimeout = setTimeout(() => {
+		if (freeHandles.length < MIN_POOL_SIZE) addHandle()
+		capTimeout = null
+	}, 5)
+}
+
+const saveState = () => {
+	if (stateTimeout) clearTimeout(stateTimeout)
+	stateTimeout = setTimeout(() => {
+		const state = [...vfsFileMap.entries()].flatMap(([vn, rn]) => {
+			if (!rn.startsWith(VFS_ROOT_DIRNAME)) return []
+			return [[rn, [vn, vfsFlags.get(vn)]]]
+		})
+		stateTimeout = null
+		console.log('state', state)
+	}, 5)
 }
 
 /** @param {number} pFile */
@@ -223,6 +250,7 @@ const xClose = (pFile) => {
 			vfsFileMap.delete(path)
 			freeHandles.push(path)
 		}
+		saveState()
 	} catch (e) {
 		return storeErr(e, SQLITE.IOERR)
 	}
@@ -245,11 +273,12 @@ const xOpen = (pVfs, zName, pFile, flags, pOutFlags) => {
 			if (!freeHandles.length) return abort(`no more free handles to create ${fn}`)
 			realPath = freeHandles.shift()
 			vfsFileMap.set(fn, realPath)
-			addHandle()
+			adjustCapacity()
 		}
 		if (!realPath) abort(`file not found ${fn}`)
 		ptrMap.set(pFile, fn)
 		vfsFlags.set(fn, flags)
+		saveState()
 		setLock(pFile, SQLITE.LOCK_NONE)
 		const sq3File = new structs.sqlite3_file(pFile)
 		sq3File.$pMethods = ioPointer
@@ -301,9 +330,12 @@ const xDelete = (pVfs, zName, _doSyncDir) => {
 		const fn = heap.cstrToJs(zName)
 		const file = vfsFileMap.get(fn)
 		if (file) {
+			sahMap.get(file).truncate(0)
 			freeHandles.push(file)
 			vfsFileMap.delete(fn)
+			vfsFlags.delete(fn)
 		}
+		saveState()
 		return 0
 	} catch (e) {
 		storeErr(e)
@@ -311,38 +343,64 @@ const xDelete = (pVfs, zName, _doSyncDir) => {
 	}
 }
 
+/**
+ * @param {number} pVfs
+ * @param {number} nOut
+ * @param {number} pOut
+ */
+const xRandomness = (pVfs, nOut, pOut) => {
+	const hp = heap.heap8u()
+	let i = 0
+	for (; i < nOut; ++i) hp[pOut + i] = (Math.random() * 255000) & 0xff
+	return i
+}
+
 export const openDbFile = async (fn) => {
-	const fh = await rootDh.getFileHandle(fn, { create: true })
+	const fh = await rootDh.getFileHandle(fn, CREATE_TRUE)
 	sahMap.set(fn, await fh.createSyncAccessHandle())
 	vfsFileMap.set(fn, fn)
 }
 
 export const initVFS = async () => {
-	const dh = await globalThis?.navigator?.storage?.getDirectory()
-	if (!dh) abort('could not open OPFS')
+	rootDh = await globalThis?.navigator?.storage?.getDirectory()
+	if (!rootDh) abort('could not open OPFS')
 
-	const fh = await dh.getFileHandle(VFS_STATE_FILENAME, { create: true })
-	const sah = await fh.createSyncAccessHandle()
-	const cp = sah.close()
-	await cp
-	if (cp?.then) abort('sah.close() is async')
+	try {
+		poolDh = await rootDh.getDirectoryHandle(VFS_ROOT_DIRNAME)
+	} catch (err) {}
 
-	const stateFile = await fh.getFile()
-	const state = new Map(stateFile.size ? Object.entries(JSON.parse(await stateFile.text())) : [])
+	const state = new Map()
 
-	rootDh = dh
-	poolDh = await dh.getDirectoryHandle(VFS_ROOT_DIRNAME, { create: true })
-	for await (const hd of poolDh.values()) {
-		if (hd.kind !== 'file') continue
-		const pathParts = await dh.resolve(hd)
-		const name = pathParts.join('/')
-		sahMap.set(name, await hd.createSyncAccessHandle())
-		if (state.has(name)) {
-			const [vn, vf] = state.get(name)
-			vfsFileMap.set(vn, name)
-			vfsFlags.set(vn, vf)
-		} else {
-			freeHandles.push(name)
+	if (poolDh) {
+		for await (const hd of poolDh.values()) {
+			if (hd.kind !== 'file') continue
+			if (hd.name === VFS_STATE_FILENAME) {
+				const stateFile = await hd.getFile()
+				if (!stateFile.size) continue
+				const st = JSON.parse(await stateFile.text())
+				for (const [k, v] of Object.entries(st)) {
+					console.log('state', k, v)
+				}
+				continue
+			}
+			const parts = await rootDh.resolve(hd)
+			sahMap.set(parts.join('/'), await hd.createSyncAccessHandle())
+		}
+	} else {
+		const checkFile = `.opfs-check-${randName()}`
+		const fh = await rootDh.getFileHandle(checkFile, CREATE_TRUE)
+		const sah = await fh.createSyncAccessHandle()
+		const cp = sah.close()
+		await cp
+		await fh.remove()
+		if (cp?.then) abort('sah.close() is async')
+		poolDh = await rootDh.getDirectoryHandle(VFS_ROOT_DIRNAME, CREATE_TRUE)
+	}
+
+	for (const k of sahMap.keys()) {
+		if (!state.has(k)) {
+			freeHandles.push(k)
+			continue
 		}
 	}
 
@@ -350,8 +408,52 @@ export const initVFS = async () => {
 		await addHandle()
 	}
 
+	const opfsVfs = new structs.sqlite3_vfs()
+	opfsVfs.$szOsFile = structs.sqlite3_file.structInfo.sizeof
+	opfsVfs.$mxPathname = 512
+
+	const vfsMethods = {
+	}
+
+	const wrappedVfs = Object.fromEntries(Object.entries(vfsMethods).map(([k, v]) => {
+		return [k, (...args) => {
+			console.log(`vfs.${k}`, args)
+			return v(...args)
+		}]
+	}))
+
+	installMethods(opfsVfs, {
+		...wrappedVfs,
+		xOpen,
+		xAccess,
+		xDelete,
+		xCurrentTime,
+		xCurrentTimeInt64,
+		xFullPathname,
+		xRandomness,
+		xSleep: NO_OP,
+	})
+
+	vfsPointer = opfsVfs.pointer
+	if (!vfsPointer) sqliteError(`no pointer`)
+
+	const asm = getASM()
+	const rc = asm.sqlite3_vfs_register(vfsPointer, 1)
+	if (rc) sqliteError(rc, `vfs registration failed`)
+
+	const ioMethods = {
+	}
+
+	const wrappedIo = Object.fromEntries(Object.entries(ioMethods).map(([k, v]) => {
+		return [k, (...args) => {
+			console.log(`io.${k}`, args)
+			return v(...args)
+		}]
+	}))
+
 	const ioStruct = new structs.sqlite3_io_methods()
 	installMethods(ioStruct, {
+		...wrappedIo,
 		xSectorSize,
 		xFileControl,
 		xLock: setLock,
@@ -367,33 +469,13 @@ export const initVFS = async () => {
 	})
 
 	ioPointer = ioStruct.pointer
+}
 
-	const opfsVfs = new structs.sqlite3_vfs()
-	opfsVfs.$szOsFile = structs.sqlite3_file.structInfo.sizeof
-	opfsVfs.$mxPathname = 512
+export const getVFS = () => vfsPointer ?? abort('vfs not initialized')
 
-	const asm = getASM()
-
-	const pDVfs = asm.sqlite3_vfs_find(null)
-	const dVfs = pDVfs ? new structs.sqlite3_vfs(pDVfs) : null
-	if (dVfs) {
-		opfsVfs.$xRandomness = dVfs.$xRandomness
-		opfsVfs.$xSleep = dVfs.$xSleep
-		dVfs.dispose()
+export const releaseHandles = () => {
+	for (const h of sahMap.keys()) {
+		sahMap.get(h).close()
+		sahMap.delete(h)
 	}
-
-	installMethods(opfsVfs, {
-		xOpen,
-		xAccess,
-		xDelete,
-		xCurrentTime,
-		xCurrentTimeInt64,
-		xFullPathname,
-	})
-
-	const rc = asm.sqlite3_vfs_register(opfsVfs.pointer, 1)
-	if (rc) sqliteError(rc, `vfs registration failed`)
-	vfsPointer = opfsVfs.pointer
-	if (!vfsPointer) return sqliteError(`no pointer`)
-	return vfsPointer
 }

@@ -81,6 +81,7 @@ export const xArg = new Map([
 	['string', __xArgStr],
 	['pointer', __xArgStr],
 	['sqlite3_filename', __xInt],
+	['sqlite3_stmt*', __xInt],
 	['sqlite3_session*', __xInt],
 	['sqlite3_context*', __xInt],
 	['sqlite3_changegroup*', __xInt],

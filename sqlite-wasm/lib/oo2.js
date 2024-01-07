@@ -2,7 +2,6 @@ import { C_API, sqliteError } from './base.js'
 import * as heap from './heap.js'
 import * as capi from './capi.js'
 import * as pstack from './pstack.js'
-import { sqlite3_wasm_db_vfs } from './wasm.js'
 
 /** @typedef {import('./types').DBPointer} DBPointer */
 /** @typedef {import('./types').StmtPointer} StmtPointer */
@@ -26,56 +25,6 @@ const affirmStmtOpen = (st) => st.pointer ?? sqliteError(`stmt closed`)
 const affirmNotLocked = (s, op = 'op') => {
 	if (s.locked) return sqliteError(`${op} is illegal when stmt is locked`)
 	return affirmStmtOpen(s)
-}
-
-export const openDb = (flags = 0, vfs = null) => {
-	/** @type {DBPointer} */
-	let pDb
-	const oflags = flags || C_API.SQLITE_OPEN_READONLY
-	const stack = pstack.getPtr()
-	try {
-		const pPtr = pstack.allocPtr()
-		let rc = capi.sqlite3_open_v2(fn, pPtr, oflags, vfs || 0)
-		pDb = heap.peekPtr(pPtr)
-		checkRc(rc, pDb)
-		capi.sqlite3_extended_result_codes(pDb, 1)
-	} catch (e) {
-		if (pDb) capi.sqlite3_close_v2_raw(pDb)
-		throw e
-	} finally {
-		pstack.restore(stack)
-	}
-	try {
-		const pVfs = sqlite3_wasm_db_vfs(pDb, 0)
-		if (!pVfs) sqliteError('cannot get VFS for new db')
-	} catch (e) {
-		capi.sqlite3_close_v2_raw(pDb)
-		throw e
-	}
-	return pDb
-}
-
-export class DB {
-	/** @type {DBPointer | null} */
-	#ptr = null
-
-	/**
-	 * @param {DBPointer} ptr
-	 */
-	constructor(ptr) {
-		this.#ptr = ptr
-	}
-
-	get pointer() {
-		return this.#ptr
-	}
-
-	close() {
-		const pDb = this.pointer
-		if (!pDb) return
-		capi.sqlite3_close_v2_raw(pDb)
-		this.#ptr = null
-	}
 }
 
 export class Stmt {
