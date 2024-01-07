@@ -304,6 +304,19 @@ const xFullPathname = (pVfs, zName, nOut, pOut) => {
 
 /**
  * @param {number} pVfs
+ * @param {number} nOut
+ * @param {number} pOut
+ */
+const xGetLastError = (pVfs, nOut, pOut) => {
+	const e = fsError
+	fsError = null
+	if (e) {
+		//
+	}
+}
+
+/**
+ * @param {number} pVfs
  * @param {number} zName
  * @param {number} flags
  * @param {number} pOut
@@ -431,6 +444,7 @@ export const initVFS = async () => {
 		xCurrentTimeInt64,
 		xFullPathname,
 		xRandomness,
+		xGetLastError,
 		xSleep: NO_OP,
 	})
 

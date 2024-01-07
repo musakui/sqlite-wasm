@@ -1,16 +1,47 @@
 import { ptrSizeof, SQLITE } from './constants.js'
 import { getASM, sqliteError } from './base.js'
 import * as heap from './heap.js'
-import * as capi from './capi.js'
-import * as pstack from './pstack.js' 
-import { bigIntFitsDouble } from './util.js'
+import * as pstack from './pstack.js'
+import { bigIntFitsDouble, isTypedArray } from './util.js'
 
 /** @typedef {import('./types').StmtPointer} StmtPointer */
 
+/** @typedef {import('./types').SqliteDatatype} SqliteDatatype */
+
+const STRING = 'string'
+const BOOLEAN = 'boolean'
+const BIGINT = 'bigint'
+
 /**
+ * @param {unknown} val
+ * @param {string} tp
+ */
+const getBindType = (val, tp) => {
+	if (!tp) {
+		tp = typeof val
+	}
+	switch (tp) {
+		case STRING:
+			return SQLITE.TEXT
+		case BIGINT:
+		case BOOLEAN:
+			return SQLITE.INTEGER
+		case 'number':
+			return val % 1 ? SQLITE.FLOAT : SQLITE.INTEGER
+		default:
+			if (val === null || val === undefined) return SQLITE.NULL
+			if (val instanceof ArrayBuffer || isTypedArray(val)) return SQLITE.BLOB
+	}
+	return null
+}
+
+/**
+ * @template T
+ * @template {keyof SqliteDatatype} AsT
  * @param {StmtPtr} pSt
  * @param {number} idx
- * @param {number} [asType]
+ * @param {AsT} [asType]
+ * @return {AsT extends undefined ? T : SqliteDatatype[AsT]}
  */
 const column_result = (pSt, idx, asType) => {
 	const asm = getASM()
@@ -23,39 +54,56 @@ const column_result = (pSt, idx, asType) => {
 		case SQLITE.FLOAT:
 			return asm.sqlite3_column_double(pSt, idx)
 		case SQLITE.TEXT:
-			return capi.sqlite3_column_text(pSt, idx)
+			return heap.cstrToJs(asm.sqlite3_column_text(pSt, idx))
 		case SQLITE.BLOB:
-			const n = capi.sqlite3_column_bytes(pSt, idx)
-			const ptr = capi.sqlite3_column_blob(pSt, idx)
-			const arr = new Uint8Array(n)
-			if (n) arr.set(heap.heap8u().slice(ptr, ptr + n), 0)
-			return arr
+			const n = asm.sqlite3_column_bytes(pSt, idx)
+			if (!n) return new Uint8Array(0)
+			const ptr = asm.sqlite3_column_blob(pSt, idx)
+			return new Uint8Array(heap.heap8u().slice(ptr, ptr + n))
 		default:
-			sqliteError(`unknown column type at col #${idx}`)
+			return sqliteError(`unknown column type at col #${idx}`)
 	}
 }
 
 /**
- * @param {StmtPointer} pSt
- * @param {number} nCols
+ * @param {StmtPtr} pSt
+ * @param {number} idx
+ * @param {unknown} val
  */
-const getRowAsArray = (pSt, nCols) => {
-	return Array.from({ length: nCols }, (_, i) => column_result(pSt, i))
-}
-
-/**
- * @param {StmtPointer} pSt
- * @param {number} nCols
- */
-const getRowAsObject = (pSt, nCols) => {
-	const arr = Array.from({ length: nCols }, (_, i) => {
-		return /** @type {const} */ ([
-			//
-			capi.sqlite3_column_name(pSt, i),
-			column_result(pSt, i),
-		])
-	})
-	return Object.fromEntries(arr)
+const bind_parameter = (pSt, idx, val, asType) => {
+	const asm = getASM()
+	const tp = typeof val
+	switch (asType ?? getBindType(val)) {
+		case SQLITE.INTEGER:
+			if (tp === BOOLEAN) {
+				return asm.sqlite3_bind_int(pSt, idx, val ? 1 : 0)
+			}
+			const m = `sqlite3_bind_int${tp === BIGINT ? '64' : ''}`
+			return asm[m](pSt, idx, val)
+		case SQLITE.FLOAT:
+			return asm.sqlite3_bind_double(pSt, idx, val)
+		case SQLITE.TEXT:
+			const [pStr, n] = heap.allocCStringWithLength(val)
+			return asm.sqlite3_bind_text(pSt, idx, pStr, n, SQLITE.WASM_DEALLOC)
+		case SQLITE.NULL:
+			return asm.sqlite3_bind_null(pSt, idx)
+		case SQLITE.BLOB:
+			/** @type {number} */
+			let len
+			/** @type {number} */
+			let pBlob
+			if (val instanceof ArrayBuffer) {
+				val = new Uint8Array(val)
+			}
+			if (tp === STRING) {
+				;[pBlob, len] = heap.allocCStringWithLength(val)
+			} else if (val.byteLength) {
+				len = val.byteLength
+				pBlob = heap.alloc(len)
+				heap.heap8().set(val, pBlob)
+			}
+			return asm.sqlite3_bind_blob(pSt, idx, pBlob, len, SQLITE.WASM_DEALLOC)
+	}
 }
 
 /**
@@ -83,9 +131,8 @@ export const db_exec = (pDb, sql) => {
  * @param {number} pDb
  * @param {string} sql
  * @param {unknown[]} bind
- * @param {(p: import('./oo2').StmtPointer, d: import('./oo2').DBPointer) => T} cb
  */
-export const db_exec_stmt = (pDb, sql, bind = [], cb = undefined) => {
+export const db_exec_stmt = (pDb, sql, bind = [], asObject = false) => {
 	const asm = getASM()
 	const stack = heap.scopedAllocPush()
 	try {
@@ -111,21 +158,25 @@ export const db_exec_stmt = (pDb, sql, bind = [], cb = undefined) => {
 			if (!pStmt) continue
 			/** @type {number} */
 			const paramCount = asm.sqlite3_bind_parameter_count(pStmt)
-			if (bind.length && paramCount) {
-				// bind stmt
+			if (bind?.length && paramCount) {
+				for (let i = 0; i < bind.length; ++i) {
+					const brc = bind_parameter(pStmt, i + 1, bind[i])
+					if (brc) sqliteError(brc, 'bind error')
+				}
 			}
 			const nCols = asm.sqlite3_column_count(pStmt)
+			const cols = Array.from({ length: nCols }, (_, i) => {
+				return asObject ? asm.sqlite3_column_name(pStmt, i) : i
+			})
 			let rc = 0
 			while (rc !== SQLITE.DONE) {
 				rc = asm.sqlite3_step(pStmt)
 				if (rc === SQLITE.ROW) {
-					console.log('got row', getRowAsArray(pStmt, nCols))
+					console.log(cols.map((i) => column_result(pStmt, i)))
 				} else if (rc !== SQLITE.DONE) {
 					sqliteError(rc, 'step error')
 				}
 			}
-			//const rrc = asm.sqlite3_reset(pStmt)
-			//if (rrc) sqliteError(rrc, 'reset error')
 			const frc = asm.sqlite3_finalize(pStmt)
 			if (frc) sqliteError(frc, 'finalize error')
 		}
@@ -136,6 +187,7 @@ export const db_exec_stmt = (pDb, sql, bind = [], cb = undefined) => {
 }
 
 export const openDb = (fn, flags = 0, pVfs = null) => {
+	/** @type {number} */
 	let pDb
 	const asm = getASM()
 	const oflags = flags || SQLITE.OPEN_READONLY
@@ -152,11 +204,13 @@ export const openDb = (fn, flags = 0, pVfs = null) => {
 		if (pDb) asm.sqlite3_close_v2_raw(pDb)
 		throw e
 	} finally {
-		heap.scopedAllocPop(scope)
 		pstack.restore(stack)
+		heap.scopedAllocPop(scope)
 	}
 	return pDb
 }
 
 /** @param {number} pDb */
-export const closeDb = (pDb) => getASM().sqlite3_close_v2(pDb)
+export const closeDb = (pDb) => {
+	getASM().sqlite3_close_v2(pDb)
+}

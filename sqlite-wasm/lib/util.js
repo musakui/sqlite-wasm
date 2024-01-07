@@ -29,8 +29,9 @@ export const isSAB = (b) => (globalThis.SharedArrayBuffer ? b instanceof SharedA
 export const isFunction = (fn) => fn instanceof Function
 
 /**
+ * @template T
  * @param {unknown} ptr
- * @return {ptr is number}
+ * @return {ptr is import('./types').WasmPointer<T>}
  */
 export const isPtr32 = (ptr) => 'number' === typeof ptr && ptr === (ptr | 0) && ptr >= 0
 
@@ -56,13 +57,13 @@ export const isSQLableTypedArray = (v) => v && (v instanceof Uint8Array || v ins
 
 export const isBindableTypedArray = isSQLableTypedArray
 
-/** @param {number} b */
+/** @param {number | BigInt} b */
 export const bigIntFits64 = (b) => b >= MIN_BIGINT_64 && b <= MAX_BIGINT_64
 
-/** @param {number} b */
+/** @param {number | BigInt} b */
 export const bigIntFits32 = (b) => b >= -0x7fffffffn - 1n && b <= 0x7fffffffn
 
-/** @param {number} b */
+/** @param {number | BigInt} b */
 export const bigIntFitsDouble = (b) => b >= MIN_SAFE_INTEGER && b <= MAX_SAFE_INTEGER
 
 /**

@@ -41,8 +41,6 @@ const __load = async (resp) => {
 			memory,
 			...noops(others),
 			...noops(syscall.map((c) => `__syscall_${c}`)),
-			// need to return the generic error code to work
-			__syscall_openat: () => -44,
 			emscripten_date_now: () => Date.now(),
 		},
 		wasi_snapshot_preview1: {

@@ -1,13 +1,8 @@
 import { structs } from './base'
-import type { AbstractArgAdapter } from './binding'
-import type { BaseDB, Stmt } from './oo2'
 
 declare const pointerTag: unique symbol
 
 export type WasmPointer<T = unknown> = number & { readonly [pointerTag]: T }
-
-export type DBPointer = WasmPointer<BaseDB>
-export type StmtPointer = WasmPointer<Stmt>
 
 export type VFSPointer = WasmPointer<typeof structs.sqlite3_vfs>
 
@@ -19,23 +14,43 @@ export type VersionInfo = {
 	SQLITE_VERSION_NUMBER: number
 }
 
+export interface SqliteDatatype {
+	1: number
+	2: number | BigInt
+	3: string
+	4: unknown
+	5: null
+}
+
+interface SyncHandleOptions {
+	/** offset in bytes */
+	at?: number
+}
+
 export interface FileSystemSyncAccessHandle {
 	/** persists the changes from write() */
 	flush(): void
+
 	/** closes the file handle and releases the lock */
 	close(): void
+
 	/** get the size of the file in bytes */
 	getSize(): number
+
 	/** resizes the file to the specified number of bytes */
 	truncate(newSize: number): void
+
 	/**
 	 * @param buffer buffer to read content into
+	 * @return number of bytes read
 	 */
-	read(buffer: ArrayBuffer, opt?: { at?: number }): number
+	read(buffer: ArrayBuffer, options?: SyncHandleOptions): number
+
 	/**
 	 * @param buffer buffer to get the content to write
+	 * @return number of bytes written
 	 */
-	write(buffer: ArrayBuffer, opt?: { at?: number }): number
+	write(buffer: ArrayBuffer, options?: SyncHandleOptions): number
 }
 
 interface SharedTypeMap {
@@ -66,9 +81,9 @@ export interface ResultTypeMap extends SharedTypeMap {
 
 export interface ArgTypeMap extends SharedTypeMap {
 	'**': WasmPointer<WasmPointer>
-	utf8: number
-	string: number
-	pointer: number
+	utf8: WasmPointer<string>
+	string: WasmPointer<string>
+	pointer: WasmPointer
 	sqlite3_filename: number
 	'string:static': string
 	'string:flexible': number

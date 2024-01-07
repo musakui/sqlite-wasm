@@ -1,11 +1,16 @@
 import * as SQLITE from './embedded.js'
 import { DEBUG } from './constants.js'
 import { getASM, getMemory } from './instance.js'
-import { abort, isPtr, typedArrayToString } from './util.js'
+import { abort, isPtr } from './util.js'
 
 import { Jaccwabyt } from './jaccwabyt.js'
 
-/** @typedef {import('./types').WasmPointer} WasmPointer */
+const DECODER = new TextDecoder('utf8')
+
+/**
+ * @template T
+ * @typedef {import('./types').WasmPointer<T>} WasmPointer<T>
+ */
 
 /** @type {Map<number, string>} */
 const __rcMap = new Map()
@@ -45,12 +50,14 @@ const DEBUG_CAPI = !!import.meta?.env?.DEBUG_CAPI
 
 const capi_ori = Object.create(null)
 
-export const capi = DEBUG_CAPI ? new Proxy(capi_ori, {
-	get (target, prop) {
-		console.log('capi accessed', prop)
-		return target[prop]
-	}
-}) : capi_ori
+export const capi = DEBUG_CAPI
+	? new Proxy(capi_ori, {
+			get(target, prop) {
+				console.log('capi accessed', prop)
+				return target[prop]
+			},
+	  })
+	: capi_ori
 
 /** @type {Readonly<Record<string, number>>} */
 export const C_API = Object.create(null)
@@ -85,7 +92,8 @@ export const alloc = (n) => {
 export const dealloc = (n) => getASM().sqlite3_free(n)
 
 /**
- * @param {WasmPointer} m
+ * @template T
+ * @param {WasmPointer<T>} m
  * @param {number} n
  * @return {number}
  */
@@ -96,19 +104,26 @@ export const realloc = (m, n) => {
 
 export const heap = () => new Uint8Array(getMemory().buffer)
 
-/** @param {WasmPointer} ptr */
-export const cstrlen = (ptr) => {
-	if (!ptr || !isPtr(ptr)) return null
-	const h = heap()
-	const ori = ptr
-	while (h[++ptr] !== 0) {}
-	return ptr - ori
+/**
+ * @param {number} ptr
+ * @param {Uint8Array} hp
+ */
+const cstrend = (ptr, hp) => {
+	while (hp[++ptr] !== 0) {}
+	return ptr
 }
 
-/** @param {WasmPointer} ptr */
+/** @param {WasmPointer<string>} ptr */
+export const cstrlen = (ptr) => {
+	if (!ptr || !isPtr(ptr)) return null
+	return ptr - cstrend(ptr, heap())
+}
+
+/** @param {WasmPointer<string>} ptr */
 export const cstrToJs = (ptr) => {
-	const n = cstrlen(ptr)
-	return n ? typedArrayToString(heap(), ptr, ptr + n) : null === n ? n : ''
+	const hp = heap()
+	const end = cstrend(ptr, hp)
+	return ptr === end ? '' : DECODER.decode(hp.slice(ptr, end))
 }
 
 export const setup = () => {
