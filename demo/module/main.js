@@ -16,7 +16,7 @@ const runWorker = (worker) => {
 
 const app = document.querySelector('#app')
 
-if (false) {
+if (true) {
 	app.innerHTML = 'updated library:\n\n'
 	runWorker(new Worker(new URL('./worker.js', import.meta.url), { type: 'module' }))
 } else {

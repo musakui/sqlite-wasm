@@ -41,6 +41,8 @@ const __load = async (resp) => {
 			memory,
 			...noops(others),
 			...noops(syscall.map((c) => `__syscall_${c}`)),
+			// probably required for the original vfs
+			__syscall_openat: () => -44,
 			emscripten_date_now: () => Date.now(),
 		},
 		wasi_snapshot_preview1: {
