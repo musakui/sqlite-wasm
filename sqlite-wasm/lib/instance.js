@@ -1,29 +1,6 @@
-import { DEBUG } from './constants.js'
-import { abort, NO_OP } from './util.js'
+import { abort } from './util.js'
 
 const NOT_INITIALIZED = 'not initialized'
-
-const fdcall = ['close', 'read', 'seek', 'sync', 'write', 'fdstat_get']
-
-// prettier-ignore
-const syscall = [
-	'ioctl', 'chmod', 'rmdir', 'stat64', 'openat', 'fchmod', 'getcwd',
-	'fcntl64', 'fstat64', 'lstat64', 'mkdirat', 'fchown32', 'unlinkat',
-	'faccessat', 'utimensat', 'newfstatat', 'readlinkat', 'ftruncate64',
-]
-
-// prettier-ignore
-const others = [
-	'_mmap_js', '_tzset_js', '_munmap_js', '_localtime_js',
-	'emscripten_get_now', 'emscripten_resize_heap',
-	'_emscripten_get_now_is_monotonic',
-]
-
-// prettier-ignore
-/** @param {string[]} a */
-const noops = (a) => Object.fromEntries(a.map((c) => [
-	c, DEBUG ? ((..._) => console.warn(`'${c}' called with:`, _)) : NO_OP
-]))
 
 /** @type {Promise<void> | null} */
 let initPromise = null
@@ -34,22 +11,32 @@ let instance = null
 /** @type {WebAssembly.Memory | null} */
 let memory = null
 
-/** @param {Response | PromiseLike<Response>} resp */
+/**
+ * @param {Response | PromiseLike<Response>} resp
+ */
 const __load = async (resp) => {
+	/** @type {ProxyHandler} */
+	const handler = {
+		get(target, prop) {
+			return target[prop] ?? (() => abort(`${prop} was called but not implemented`))
+		},
+	}
+
+	const env = {
+		memory,
+		emscripten_date_now: () => Date.now(),
+		// return a generic errorcode. required for the original vfs code
+		__syscall_openat: () => -44,
+	}
+
+	const wasi = {
+		environ_sizes_get: () => 0,
+		environ_get: () => 0,
+	}
+
 	const src = await WebAssembly.instantiateStreaming(resp, {
-		env: {
-			memory,
-			...noops(others),
-			...noops(syscall.map((c) => `__syscall_${c}`)),
-			// probably required for the original vfs
-			__syscall_openat: () => -44,
-			emscripten_date_now: () => Date.now(),
-		},
-		wasi_snapshot_preview1: {
-			...noops(fdcall.map((c) => `fd_${c}`)),
-			environ_sizes_get: () => 0,
-			environ_get: () => 0,
-		},
+		env: new Proxy(env, handler),
+		wasi_snapshot_preview1: new Proxy(wasi, handler),
 	})
 
 	instance = src.instance

@@ -330,6 +330,37 @@ const makeMemberWrapper = function f(ctor, name, descr) {
 	Object.defineProperty(ctor.prototype, key, prop)
 }
 
+const validateStructInfo = (structInfo) => {
+	let lastMember = false
+	for (const [k, m] of Object.entries(structInfo.members)) {
+		if (!m.sizeof) toss(structName, 'member', k, 'is missing sizeof.')
+		else if (m.sizeof === 1) {
+			m.signature === 'c' ||
+				m.signature === 'C' ||
+				toss('Unexpected sizeof==1 member', sPropName(structInfo.name, k), 'with signature', m.signature)
+		} else {
+			if (0 !== m.sizeof % 4) {
+				logger.warn('Invalid struct member description =', m, 'from', structInfo)
+				toss(structName, 'member', k, 'sizeof is not aligned. sizeof=' + m.sizeof)
+			}
+			if (0 !== m.offset % 4) {
+				logger.warn('Invalid struct member description =', m, 'from', structInfo)
+				toss(structName, 'member', k, 'offset is not aligned. offset=' + m.offset)
+			}
+		}
+		if (!lastMember || lastMember.offset < m.offset) lastMember = m
+	}
+	if (!lastMember) toss('No member property descriptions found.')
+	else if (structInfo.sizeof < lastMember.offset + lastMember.sizeof) {
+		toss(
+			'Invalid struct config:',
+			structName,
+			'max member offset (' + lastMember.offset + ') ',
+			'extends past end of struct (sizeof=' + structInfo.sizeof + ').'
+		)
+	}
+}
+
 export const Jaccwabyt = function StructBinderFactory(config) {
 	const SBF = StructBinderFactory
 
@@ -372,35 +403,7 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 			structInfo.name = structName
 		}
 		if (!structName) toss('Struct name is required.')
-		let lastMember = false
-		Object.keys(structInfo.members).forEach((k) => {
-			const m = structInfo.members[k]
-			if (!m.sizeof) toss(structName, 'member', k, 'is missing sizeof.')
-			else if (m.sizeof === 1) {
-				m.signature === 'c' ||
-					m.signature === 'C' ||
-					toss('Unexpected sizeof==1 member', sPropName(structInfo.name, k), 'with signature', m.signature)
-			} else {
-				if (0 !== m.sizeof % 4) {
-					logger.warn('Invalid struct member description =', m, 'from', structInfo)
-					toss(structName, 'member', k, 'sizeof is not aligned. sizeof=' + m.sizeof)
-				}
-				if (0 !== m.offset % 4) {
-					logger.warn('Invalid struct member description =', m, 'from', structInfo)
-					toss(structName, 'member', k, 'offset is not aligned. offset=' + m.offset)
-				}
-			}
-			if (!lastMember || lastMember.offset < m.offset) lastMember = m
-		})
-		if (!lastMember) toss('No member property descriptions found.')
-		else if (structInfo.sizeof < lastMember.offset + lastMember.sizeof) {
-			toss(
-				'Invalid struct config:',
-				structName,
-				'max member offset (' + lastMember.offset + ') ',
-				'extends past end of struct (sizeof=' + structInfo.sizeof + ').'
-			)
-		}
+		validateStructInfo(structInfo)
 		const debugFlags = rop(SBF.__makeDebugFlags(StructBinder.debugFlags))
 
 		class StructCtor extends StructType {
@@ -415,15 +418,19 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 					__allocStruct(StructCtor, this)
 				}
 			}
+
+			static get structName() { return structName }
+			static get structInfo() { return structInfo }
+			static memberKey(k) { return __memberKey(k) }
+			static memberKeys() {
+				const a = []
+				for (const k of Object.keys(this.structInfo.members)) {
+					a.push(this.memberKey(k))
+				}
+				return a
+			}
 		}
-		Object.defineProperties(StructCtor, {
-			debugFlags: debugFlags,
-			isA: rop((v) => v instanceof StructCtor),
-			memberKey: __memberKeyProp,
-			memberKeys: __structMemberKeys,
-			structInfo: rop(structInfo),
-			structName: rop(structName),
-		})
+		Object.defineProperties(StructCtor, { debugFlags })
 		Object.defineProperties(StructCtor.prototype, { debugFlags })
 		for (const [name, member] of Object.entries(structInfo.members)) {
 			makeMemberWrapper(StructCtor, name, member)
@@ -440,7 +447,7 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 	return StructBinder
 }
 
-class StructType {
+export class StructType {
 	constructor(structName, structInfo) {
 		if (arguments[2] !== rop) {
 			toss('Do not call the StructType constructor from client-level code.')

@@ -292,37 +292,30 @@ const rxJSig = /^(\w)\((\w*)\)$/
 const typeCodes = { f64: 0x7c, f32: 0x7d, i64: 0x7e, i32: 0x7f }
 const sigTypes = { i: 'i32', p: 'i32', P: 'i32', s: 'i32', j: 'i64', f: 'f32', d: 'f64' }
 
-const uleb128Encode = (tgt, method, n) => {
-	if (n < 128) {
-		tgt[method](n)
-	} else {
-		tgt[method](n % 128 | 128, n >> 7)
-	}
-}
+const letterCode = (x) => typeCodes[sigTypes[x]]
+const encodeBytes = (n) => (n < 128 ? [n] : [n % 128, n >> 7])
 
-const letterType = (x) => sigTypes[x] || abort(`Invalid signature letter: ${x}`)
-
-const pushSigType = (dest, letter) => dest.push(typeCodes[letterType(letter)])
-
+/**
+ * @param {Function} func
+ * @param {string} sig
+ */
 const jsFuncToWasm = (func, sig) => {
-	if ('string' === typeof func) {
-		;[sig, func] = [func, sig]
-	}
 	const m = rxJSig.exec(sig)
-	const sp = m ? m[2] : sig.substr(1)
-	const wasmCode = [0x01, 0x60]
-	uleb128Encode(wasmCode, 'push', sp.length)
-	for (const x of sp) pushSigType(wasmCode, x)
-	if ('v' === sig[0]) {
-		wasmCode.push(0)
-	} else {
-		wasmCode.push(1)
-		pushSigType(wasmCode, sig[0])
-	}
-	uleb128Encode(wasmCode, 'unshift', wasmCode.length)
-	wasmCode.unshift(0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01)
-	wasmCode.push(0x02, 0x07, 0x01, 0x01, 0x65, 0x01, 0x66, 0x00, 0x00, 0x07, 0x05, 0x01, 0x01, 0x66, 0x00, 0x00)
-	return new WebAssembly.Instance(new WebAssembly.Module(new Uint8Array(wasmCode)), { e: { f: func } }).exports.f
+	const sp = m ? m[2] : sig.slice(1)
+	// prettier-ignore
+	const wasmCode = [
+		0x01, 0x60,
+		...encodeBytes(sp.length), ...[...sp].map(letterCode),
+		...(sig[0] === 'v' ? [0] : [1, letterCode(sig[0])]),
+	]
+	// prettier-ignore
+	const mod = new WebAssembly.Module(new Uint8Array([
+		0x00, 0x61, 0x73, 0x6d, 0x01, 0x00, 0x00, 0x00, 0x01,
+		...encodeBytes(wasmCode.length), ...wasmCode,
+		0x02, 0x07, 0x01, 0x01, 0x65, 0x01, 0x66, 0x00,
+		0x00, 0x07, 0x05, 0x01, 0x01, 0x66, 0x00, 0x00,
+	]))
+	return new WebAssembly.Instance(mod, { e: { f: func } }).exports.f
 }
 
 /**
