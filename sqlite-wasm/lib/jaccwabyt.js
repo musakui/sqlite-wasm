@@ -3,6 +3,7 @@ import * as heap_m from './heap.js'
 import * as logger from './logger.js'
 import { ptrSizeof, ptrIR, isLittleEndian } from './constants.js'
 
+const toss = util.toss
 const xPtrPropName = '(pointer-is-external)'
 
 const isFuncSig = (s) => '(' === s[1]
@@ -149,7 +150,7 @@ const __freeStruct = function (ctor, obj, m) {
 		}
 		delete obj.ondispose
 		if (ctor.debugFlags.__flags.dealloc) {
-			log('debug.dealloc:', obj[xPtrPropName] ? 'EXTERNAL' : '', ctor.structName, 'instance:', ctor.structInfo.sizeof, 'bytes @' + m)
+			logger.log('debug.dealloc:', obj[xPtrPropName] ? 'EXTERNAL' : '', ctor.structName, 'instance:', ctor.structInfo.sizeof, 'bytes @' + m)
 		}
 		if (!obj[xPtrPropName]) heap_m.dealloc(m)
 	}
@@ -164,7 +165,7 @@ const __allocStruct = function (ctor, obj, m) {
 	}
 	try {
 		if (ctor.debugFlags.__flags.alloc) {
-			log('debug.alloc:', fill ? '' : 'EXTERNAL', ctor.structName, 'instance:', ctor.structInfo.sizeof, 'bytes @' + m)
+			logger.log('debug.alloc:', fill ? '' : 'EXTERNAL', ctor.structName, 'instance:', ctor.structInfo.sizeof, 'bytes @' + m)
 		}
 		if (fill) heap_m.heap8u().fill(0, m, m + ctor.structInfo.sizeof)
 		__instancePointerMap.set(obj, m)
@@ -172,11 +173,6 @@ const __allocStruct = function (ctor, obj, m) {
 		__freeStruct(ctor, obj, m)
 		throw e
 	}
-}
-
-const __memoryDump = function () {
-	const p = this.pointer
-	return p ? new Uint8Array(heap_m.heap8u().slice(p, p + this.structInfo.sizeof)) : null
 }
 
 const memberPrefix = '$'
@@ -207,15 +203,6 @@ const __memberSignature = function f(obj, memberName, emscriptenFormat = false) 
 	return emscriptenFormat ? f._(m.signature) : m.signature
 }
 
-const __ptrPropDescriptor = {
-	configurable: false,
-	enumerable: false,
-	get: function () {
-		return __instancePointerMap.get(this)
-	},
-	set: () => toss("Cannot assign the 'pointer' property of a struct."),
-}
-
 const __structMemberKeys = rop(function () {
 	const a = []
 	for (const k of Object.keys(this.structInfo.members)) {
@@ -241,7 +228,7 @@ const __memberToJsString = function f(obj, memberName) {
 
 	if (!addr) return null
 	let pos = addr
-	const mem = heap()
+	const mem = heap_m.heap8u()
 	for (; mem[pos] !== 0; ++pos) {}
 
 	return addr === pos ? '' : util.typedArrayToString(mem, addr, pos)
@@ -280,11 +267,71 @@ const __setMemberCString = function (obj, memberName, str) {
 	return obj
 }
 
+const makeMemberWrapper = function f(ctor, name, descr) {
+	if (!f._) {
+		f._ = { getters: {}, setters: {}, sw: {} }
+		const a = ['i', 'c', 'C', 'p', 'P', 's', 'f', 'd', 'v()', 'j']
+		a.forEach(function (v) {
+			f._.getters[v] = sigDVGetter(v)
+			f._.setters[v] = sigDVSetter(v)
+			f._.sw[v] = sigDVSetWrapper(v)
+		})
+		const rxSig1 = /^[ipPsjfdcC]$/,
+			rxSig2 = /^[vipPsjfdcC]\([ipPsjfdcC]*\)$/
+		f.sigCheck = function (obj, name, key, sig) {
+			if (Object.prototype.hasOwnProperty.call(obj, key)) {
+				toss(obj.structName, 'already has a property named', key + '.')
+			}
+			rxSig1.test(sig) || rxSig2.test(sig) || toss('Malformed signature for', sPropName(obj.structName, name) + ':', sig)
+		}
+	}
+	const key = ctor.memberKey(name)
+	f.sigCheck(ctor.prototype, name, key, descr.signature)
+	descr.key = key
+	descr.name = name
+	const sigGlyph = sigLetter(descr.signature)
+	const xPropName = sPropName(ctor.prototype.structName, key)
+	const dbg = ctor.prototype.debugFlags.__flags
+
+	const prop = Object.create(null)
+	prop.configurable = false
+	prop.enumerable = false
+	prop.get = function () {
+		if (dbg.getter) {
+			logger.log('debug.getter:', f._.getters[sigGlyph], 'for', sigIR(sigGlyph), xPropName, '@', this.pointer, '+', descr.offset, 'sz', descr.sizeof)
+		}
+		let rc = new DataView(heap_m.heap8u().buffer, this.pointer + descr.offset, descr.sizeof)[f._.getters[sigGlyph]](0, isLittleEndian)
+		if (dbg.getter) logger.log('debug.getter:', xPropName, 'result =', rc)
+		return rc
+	}
+	if (descr.readOnly) {
+		prop.set = __propThrowOnSet(ctor.prototype.structName, key)
+	} else {
+		prop.set = function (v) {
+			if (dbg.setter) {
+				logger.log('debug.setter:', f._.setters[sigGlyph], 'for', sigIR(sigGlyph), xPropName, '@', this.pointer, '+', descr.offset, 'sz', descr.sizeof, v)
+			}
+			if (!this.pointer) {
+				toss('Cannot set struct property on disposed instance.')
+			}
+			if (null === v) v = 0
+			else
+				while (!isNumericValue(v)) {
+					if (isAutoPtrSig(descr.signature) && v instanceof StructType) {
+						v = v.pointer || 0
+						if (dbg.setter) logger.log('debug.setter:', xPropName, 'resolved to', v)
+						break
+					}
+					toss('Invalid value for pointer-type', xPropName + '.')
+				}
+			new DataView(heap_m.heap8u().buffer, this.pointer + descr.offset, descr.sizeof)[f._.setters[sigGlyph]](0, f._.sw[sigGlyph](v), isLittleEndian)
+		}
+	}
+	Object.defineProperty(ctor.prototype, key, prop)
+}
+
 export const Jaccwabyt = function StructBinderFactory(config) {
 	const SBF = StructBinderFactory
-
-	const heap = config.heap instanceof Function ? config.heap : () => new Uint8Array(config.heap.buffer),
-		log = logger.info
 
 	if (!SBF.debugFlags) {
 		SBF.__makeDebugFlags = function (deriveFrom = null) {
@@ -315,118 +362,6 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 			return f
 		}
 		SBF.debugFlags = SBF.__makeDebugFlags()
-	}
-
-	const StructType = function ctor(structName, structInfo) {
-		if (arguments[2] !== rop) {
-			toss('Do not call the StructType constructor', 'from client-level code.')
-		}
-		Object.defineProperties(this, {
-			structName: rop(structName),
-			structInfo: rop(structInfo),
-		})
-	}
-
-	StructType.prototype = Object.create(null, {
-		dispose: rop(function () {
-			__freeStruct(this.constructor, this)
-		}),
-		lookupMember: rop(function (memberName, tossIfNotFound = true) {
-			return __lookupMember(this.structInfo, memberName, tossIfNotFound)
-		}),
-		memberToJsString: rop(function (memberName) {
-			return __memberToJsString(this, memberName)
-		}),
-		memberIsString: rop(function (memberName, tossIfNotFound = true) {
-			return __memberIsString(this, memberName, tossIfNotFound)
-		}),
-		memberKey: __memberKeyProp,
-		memberKeys: __structMemberKeys,
-		memberSignature: rop(function (memberName, emscriptenFormat = false) {
-			return __memberSignature(this, memberName, emscriptenFormat)
-		}),
-		memoryDump: rop(__memoryDump),
-		pointer: __ptrPropDescriptor,
-		setMemberCString: rop(function (memberName, str) {
-			return __setMemberCString(this, memberName, str)
-		}),
-	})
-
-	Object.assign(StructType.prototype, {
-		addOnDispose: function (...v) {
-			__addOnDispose(this, ...v)
-			return this
-		},
-	})
-
-	Object.defineProperties(StructType, {
-		allocCString: rop(__allocCString),
-		isA: rop((v) => v instanceof StructType),
-		hasExternalPointer: rop((v) => v instanceof StructType && !!v[xPtrPropName]),
-		memberKey: __memberKeyProp,
-	})
-
-	const makeMemberWrapper = function f(ctor, name, descr) {
-		if (!f._) {
-			f._ = { getters: {}, setters: {}, sw: {} }
-			const a = ['i', 'c', 'C', 'p', 'P', 's', 'f', 'd', 'v()', 'j']
-			a.forEach(function (v) {
-				f._.getters[v] = sigDVGetter(v)
-				f._.setters[v] = sigDVSetter(v)
-				f._.sw[v] = sigDVSetWrapper(v)
-			})
-			const rxSig1 = /^[ipPsjfdcC]$/,
-				rxSig2 = /^[vipPsjfdcC]\([ipPsjfdcC]*\)$/
-			f.sigCheck = function (obj, name, key, sig) {
-				if (Object.prototype.hasOwnProperty.call(obj, key)) {
-					toss(obj.structName, 'already has a property named', key + '.')
-				}
-				rxSig1.test(sig) || rxSig2.test(sig) || toss('Malformed signature for', sPropName(obj.structName, name) + ':', sig)
-			}
-		}
-		const key = ctor.memberKey(name)
-		f.sigCheck(ctor.prototype, name, key, descr.signature)
-		descr.key = key
-		descr.name = name
-		const sigGlyph = sigLetter(descr.signature)
-		const xPropName = sPropName(ctor.prototype.structName, key)
-		const dbg = ctor.prototype.debugFlags.__flags
-
-		const prop = Object.create(null)
-		prop.configurable = false
-		prop.enumerable = false
-		prop.get = function () {
-			if (dbg.getter) {
-				log('debug.getter:', f._.getters[sigGlyph], 'for', sigIR(sigGlyph), xPropName, '@', this.pointer, '+', descr.offset, 'sz', descr.sizeof)
-			}
-			let rc = new DataView(heap().buffer, this.pointer + descr.offset, descr.sizeof)[f._.getters[sigGlyph]](0, isLittleEndian)
-			if (dbg.getter) log('debug.getter:', xPropName, 'result =', rc)
-			return rc
-		}
-		if (descr.readOnly) {
-			prop.set = __propThrowOnSet(ctor.prototype.structName, key)
-		} else {
-			prop.set = function (v) {
-				if (dbg.setter) {
-					log('debug.setter:', f._.setters[sigGlyph], 'for', sigIR(sigGlyph), xPropName, '@', this.pointer, '+', descr.offset, 'sz', descr.sizeof, v)
-				}
-				if (!this.pointer) {
-					toss('Cannot set struct property on disposed instance.')
-				}
-				if (null === v) v = 0
-				else
-					while (!isNumericValue(v)) {
-						if (isAutoPtrSig(descr.signature) && v instanceof StructType) {
-							v = v.pointer || 0
-							if (dbg.setter) log('debug.setter:', xPropName, 'resolved to', v)
-							break
-						}
-						toss('Invalid value for pointer-type', xPropName + '.')
-					}
-				new DataView(heap().buffer, this.pointer + descr.offset, descr.sizeof)[f._.setters[sigGlyph]](0, f._.sw[sigGlyph](v), isLittleEndian)
-			}
-		}
-		Object.defineProperty(ctor.prototype, key, prop)
 	}
 
 	const StructBinder = function StructBinder(structName, structInfo) {
@@ -468,16 +403,17 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 		}
 		const debugFlags = rop(SBF.__makeDebugFlags(StructBinder.debugFlags))
 
-		const StructCtor = function StructCtor(externalMemory) {
-			if (!(this instanceof StructCtor)) {
-				toss('The', structName, "constructor may only be called via 'new'.")
-			} else if (arguments.length) {
-				if (externalMemory !== (externalMemory | 0) || externalMemory <= 0) {
-					toss('Invalid pointer value for', structName, 'constructor.')
+		class StructCtor extends StructType {
+			constructor(externalMemory) {
+				super(structName, structInfo, rop)
+				if (arguments.length) {
+					if (externalMemory !== (externalMemory | 0) || externalMemory <= 0) {
+						toss('Invalid pointer value for', structName, 'constructor.')
+					}
+					__allocStruct(StructCtor, this, externalMemory)
+				} else {
+					__allocStruct(StructCtor, this)
 				}
-				__allocStruct(StructCtor, this, externalMemory)
-			} else {
-				__allocStruct(StructCtor, this)
 			}
 		}
 		Object.defineProperties(StructCtor, {
@@ -485,16 +421,13 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 			isA: rop((v) => v instanceof StructCtor),
 			memberKey: __memberKeyProp,
 			memberKeys: __structMemberKeys,
-			methodInfoForKey: rop(function (mKey) {}),
 			structInfo: rop(structInfo),
 			structName: rop(structName),
 		})
-		StructCtor.prototype = new StructType(structName, structInfo, rop)
-		Object.defineProperties(StructCtor.prototype, {
-			debugFlags: debugFlags,
-			constructor: rop(StructCtor),
-		})
-		Object.keys(structInfo.members).forEach((name) => makeMemberWrapper(StructCtor, name, structInfo.members[name]))
+		Object.defineProperties(StructCtor.prototype, { debugFlags })
+		for (const [name, member] of Object.entries(structInfo.members)) {
+			makeMemberWrapper(StructCtor, name, member)
+		}
 		return StructCtor
 	}
 
@@ -506,3 +439,74 @@ export const Jaccwabyt = function StructBinderFactory(config) {
 	}
 	return StructBinder
 }
+
+class StructType {
+	constructor(structName, structInfo) {
+		if (arguments[2] !== rop) {
+			toss('Do not call the StructType constructor from client-level code.')
+		}
+		Object.defineProperties(this, {
+			structName: rop(structName),
+			structInfo: rop(structInfo),
+		})
+	}
+
+	get memberKey() {
+		return __memberKey
+	}
+
+	get memberKeys() {
+		const a = []
+		for (const k of Object.keys(this.structInfo.members)) {
+			a.push(this.memberKey(k))
+		}
+		return a
+	}
+
+	get memoryDump() {
+		const p = this.pointer
+		return p ? new Uint8Array(heap_m.heap8u().slice(p, p + this.structInfo.sizeof)) : null
+	}
+
+	get pointer() {
+		return __instancePointerMap.get(this)
+	}
+
+	dispose() {
+		__freeStruct(this.constructor, this)
+	}
+
+	lookupMember(memberName, tossIfNotFound = true) {
+		return __lookupMember(this.structInfo, memberName, tossIfNotFound)
+	}
+
+	memberToJsString(memberName) {
+		return __memberToJsString(this, memberName)
+	}
+
+	memberIsString(memberName, tossIfNotFound = true) {
+		return __memberIsString(this, memberName, tossIfNotFound)
+	}
+
+	memberSignature(memberName, emscriptenFormat = false) {
+		return __memberSignature(this, memberName, emscriptenFormat)
+	}
+
+	setMemberCString(memberName, str) {
+		return __setMemberCString(this, memberName, str)
+	}
+
+	addOnDispose(...v) {
+		__addOnDispose(this, ...v)
+		return this
+	}
+}
+
+/*
+Object.defineProperties(StructType, {
+	allocCString: rop(__allocCString),
+	isA: rop((v) => v instanceof StructType),
+	hasExternalPointer: rop((v) => v instanceof StructType && !!v[xPtrPropName]),
+	memberKey: __memberKeyProp,
+})
+*/
