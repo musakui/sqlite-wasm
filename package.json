@@ -1,0 +1,25 @@
+{
+	"name": "@musakui/sqlite-wasm",
+	"description": "SQLite WASM",
+	"license": "MIT",
+	"version": "0.0.0",
+	"type": "module",
+	"files": [
+		"types",
+		"lib"
+	],
+	"main": "./lib/index.js",
+	"types": "./types/index.d.ts",
+	"exports": {
+		".": {
+			"types": "./types/index.d.ts",
+			"import": "./lib/index.js"
+		}
+	},
+	"scripts": {
+		"dev": "vite"
+	},
+	"devDependencies": {
+		"vite": "latest"
+	}
+}
