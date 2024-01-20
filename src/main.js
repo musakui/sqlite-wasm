@@ -1,3 +1,4 @@
+import { SQLITE } from '../lib/index.js'
 import { init, asm, cstr_to_j as _s } from '../lib/core.js'
 import { db_open, db_exec } from '../lib/db.js'
 
@@ -16,7 +17,7 @@ await init()
 log(`version: ${_s(asm._libversion())}\n`)
 log(`source ID: ${_s(asm._sourceid())}\n`)
 
-const pDb = db_open(':memory:', 4 | 2)
+const pDb = db_open(':memory:', SQLITE.OPEN_CREATE | SQLITE.OPEN_READWRITE)
 log(`\nopened db @ ${pDb}\n`)
 
 const flags = []
